@@ -10,6 +10,15 @@ pub struct Config {
     #[arg(long, env = "SNIFFNETWRT_INTERFACE")]
     pub interface: Option<String>,
 
+    /// LAN bridge to capture for per-device accounting (e.g. br-lan).
+    /// Auto-detected via ubus when omitted; pass empty to disable.
+    #[arg(long, env = "SNIFFNETWRT_LAN_DEVICE")]
+    pub lan_device: Option<String>,
+
+    /// Path to write a live PCAP export (optional). Download it at `/pcap`.
+    #[arg(long, env = "SNIFFNETWRT_PCAP_OUT")]
+    pub pcap_out: Option<String>,
+
     /// Address to bind the web server to.
     #[arg(long, env = "SNIFFNETWRT_BIND", default_value = "0.0.0.0")]
     pub bind: IpAddr,

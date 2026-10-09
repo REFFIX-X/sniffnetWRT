@@ -1,9 +1,9 @@
 //! Bridge between the vendored Sniffnet engine and the WebSocket broadcaster.
 //!
-//! Spawns the engine's capture thread, consumes its `TickRun` snapshots,
-//! accumulates them (`InfoTraffic::refresh`), enriches with router health/WAN/
-//! LAN-client data, and broadcasts a `Snapshot`. Also fires remote webhook
-//! notifications for blacklisted traffic and rate thresholds.
+//! Spawns the engine's capture thread on the WAN (and optionally a second one
+//! on the LAN bridge for per-device accounting), accumulates them, enriches the
+//! snapshot with router health/WAN/LAN-client data, fires remote webhook
+//! notifications, and broadcasts a `Snapshot`.
 
 use std::collections::HashMap;
 use std::net::IpAddr;
@@ -13,6 +13,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use sniffnetwrt_engine::engine_config::Filters;
 use sniffnetwrt_engine::mmdb::types::mmdb_reader::{MmdbReader, MmdbReaders};
 use sniffnetwrt_engine::networking::capture::{spawn_capture_thread, BackendTrafficMessage};
+use sniffnetwrt_engine::networking::manage_packets::get_address_to_lookup;
 use sniffnetwrt_engine::networking::types::capture_context::{CaptureContext, CaptureSource};
 use sniffnetwrt_engine::networking::types::data_representation::DataRepr;
 use sniffnetwrt_engine::networking::types::host::Host;
@@ -30,11 +31,13 @@ const ALERT_COOLDOWN: Duration = Duration::from_secs(60);
 /// Run the engine + bridge loop. Call once from a tokio task.
 pub async fn run(
     device: String,
+    lan_device: Option<String>,
     bpf: Option<String>,
     mmdb_dir: String,
     blacklist_path: Option<String>,
     webhook_url: Option<String>,
     notify_threshold: Option<f64>,
+    pcap_out: Option<String>,
     tx: broadcast::Sender<Snapshot>,
 ) -> Result<(), String> {
     let mut filters = Filters::default();
@@ -46,7 +49,7 @@ pub async fn run(
     }
 
     let source = CaptureSource::device_from_name(&device);
-    let context = CaptureContext::new(&source, None, &filters);
+    let context = CaptureContext::new(&source, pcap_out.as_ref(), &filters);
     if let Some(e) = context.error() {
         return Err(e.to_string());
     }
@@ -66,7 +69,7 @@ pub async fn run(
         None => IpBlacklist::default(),
     };
 
-    // Backend channel (engine → bridge) and freeze control (unused in headless mode).
+    // WAN backend channel + freeze control.
     let (backend_tx, backend_rx) = async_channel::unbounded();
     let (freeze_tx, _) = tokio::sync::broadcast::channel(1_048_575);
     let freeze_rx = freeze_tx.subscribe();
@@ -76,18 +79,62 @@ pub async fn run(
         0,
         source,
         context,
-        mmdb_readers,
+        mmdb_readers.clone(),
         ip_blacklist,
         filters,
         backend_tx,
         (freeze_rx, freeze_rx2),
     );
 
+    // Optional second capture on the LAN bridge for per-device accounting.
+    let mut lan_rx = None;
+    if let Some(lan_dev) = lan_device {
+        let lan_filters = Filters::default();
+        let lan_source = CaptureSource::device_from_name(&lan_dev);
+        let lan_context = CaptureContext::new(&lan_source, None, &lan_filters);
+        if lan_context.error().is_none() {
+            let (lan_tx, rx) = async_channel::unbounded();
+            let (lan_freeze_tx, _) = tokio::sync::broadcast::channel(1_048_575);
+            let lf1 = lan_freeze_tx.subscribe();
+            let lf2 = lan_freeze_tx.subscribe();
+            spawn_capture_thread(
+                1,
+                lan_source,
+                lan_context,
+                mmdb_readers,
+                IpBlacklist::default(),
+                lan_filters,
+                lan_tx,
+                (lf1, lf2),
+            );
+            lan_rx = Some(rx);
+            tracing::info!(lan_dev, "LAN capture enabled for per-device accounting");
+        } else {
+            tracing::warn!(lan_dev, "LAN capture unavailable; per-device bytes disabled");
+        }
+    }
+
     let mut accumulated = InfoTraffic::default();
     let mut ip_to_host: HashMap<IpAddr, Host> = HashMap::new();
     let mut last_alert: HashMap<String, Instant> = HashMap::new();
+    let mut lan_bytes: HashMap<IpAddr, (u64, u64)> = HashMap::new(); // (download, upload)
 
-    while let Ok(msg) = backend_rx.recv().await {
+    loop {
+        let msg = match &mut lan_rx {
+            Some(rx) => tokio::select! {
+                m = backend_rx.recv() => m,
+                m = rx.recv() => {
+                    if let Ok(BackendTrafficMessage::TickRun(_, info, _, _)) = m {
+                        accumulate_lan(&mut lan_bytes, &info);
+                    }
+                    continue;
+                }
+            },
+            None => backend_rx.recv().await,
+        };
+
+        let Ok(msg) = msg else { break };
+
         if let BackendTrafficMessage::TickRun(_, mut delta, host_msgs, _) = msg {
             for hm in host_msgs {
                 ip_to_host.insert(hm.address_to_lookup, hm.host);
@@ -105,9 +152,9 @@ pub async fn run(
                 &ip_to_host,
                 incoming_rate,
                 outgoing_rate,
+                &lan_bytes,
             );
 
-            // Remote notifications.
             fire_alerts(&snap, webhook_url.as_deref(), notify_threshold, &mut last_alert);
 
             let _ = tx.send(snap);
@@ -115,6 +162,21 @@ pub async fn run(
     }
 
     Ok(())
+}
+
+/// Sum per-LAN-client bytes from a LAN-side `TickRun` delta.
+fn accumulate_lan(lan_bytes: &mut HashMap<IpAddr, (u64, u64)>, info: &InfoTraffic) {
+    for (key, value) in &info.map {
+        let client = get_address_to_lookup(key, value.traffic_direction);
+        let entry = lan_bytes.entry(client).or_insert((0, 0));
+        let bytes = value.bytes as u64;
+        match value.traffic_direction {
+            // router → client = the client's download
+            TrafficDirection::Outgoing => entry.0 = entry.0.saturating_add(bytes),
+            // client → router = the client's upload
+            TrafficDirection::Incoming => entry.1 = entry.1.saturating_add(bytes),
+        }
+    }
 }
 
 fn fire_alerts(
@@ -178,6 +240,7 @@ fn build_snapshot(
     ip_to_host: &HashMap<IpAddr, Host>,
     incoming_rate: f64,
     outgoing_rate: f64,
+    lan_bytes: &HashMap<IpAddr, (u64, u64)>,
 ) -> Snapshot {
     let tot = &info.tot_data_info;
     let totals = Totals {
@@ -243,6 +306,20 @@ fn build_snapshot(
         .collect();
     services.sort_by(|a, b| b.bytes.cmp(&a.bytes));
 
+    // Merge per-device byte counters into the LAN-client list.
+    let mut devices = sysinfo::devices();
+    for d in &mut devices {
+        if let Ok(ip) = d.ip.parse::<IpAddr>() {
+            if let Some((down, up)) = lan_bytes.get(&ip) {
+                d.incoming_bytes = *down;
+                d.outgoing_bytes = *up;
+            }
+        }
+    }
+    devices.sort_by(|a, b| {
+        (b.incoming_bytes + b.outgoing_bytes).cmp(&(a.incoming_bytes + a.outgoing_bytes))
+    });
+
     Snapshot {
         kind: "tick",
         interface: device.to_string(),
@@ -255,6 +332,6 @@ fn build_snapshot(
         services,
         health: Some(sysinfo::health()),
         wan: sysinfo::wan_status(device),
-        devices: sysinfo::devices(),
+        devices,
     }
 }

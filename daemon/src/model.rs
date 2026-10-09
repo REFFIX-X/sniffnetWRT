@@ -103,4 +103,8 @@ pub struct Device {
     pub ip: String,
     pub hostname: String,
     pub online: bool,
+    /// Bytes downloaded by the client (internet → client), from the LAN capture.
+    pub incoming_bytes: u64,
+    /// Bytes uploaded by the client (client → internet), from the LAN capture.
+    pub outgoing_bytes: u64,
 }

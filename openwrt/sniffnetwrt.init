@@ -10,9 +10,10 @@ PROG=/usr/bin/sniffnetwrt
 WEB_DIR=/usr/share/sniffnetwrt
 
 start_service() {
-	local device port bind token bpf interval mmdb_dir blacklist webhook threshold
+	local device lan_device port bind token bpf interval mmdb_dir blacklist webhook threshold pcap_out
 	config_load 'sniffnetwrt'
 	config_get device 'wan' device
+	config_get lan_device 'wan' lan_device 'br-lan'
 	config_get port 'wan' port '9999'
 	config_get bind 'wan' bind '0.0.0.0'
 	config_get token 'wan' token
@@ -22,6 +23,7 @@ start_service() {
 	config_get blacklist 'wan' blacklist
 	config_get webhook 'wan' webhook
 	config_get threshold 'wan' notify_threshold
+	config_get pcap_out 'wan' pcap_out
 
 	procd_open_instance
 	procd_set_param command "$PROG" \
@@ -33,11 +35,13 @@ start_service() {
 
 	# Only pass overrides that are explicitly set (empty => auto-detect WAN).
 	[ -n "$device" ]    && procd_append_param command --interface "$device"
+	[ -n "$lan_device" ] && procd_append_param command --lan-device "$lan_device"
 	[ -n "$token" ]     && procd_append_param command --token "$token"
 	[ -n "$bpf" ]       && procd_append_param command --bpf "$bpf"
 	[ -n "$blacklist" ] && procd_append_param command --blacklist "$blacklist"
 	[ -n "$webhook" ]   && procd_append_param command --webhook "$webhook"
 	[ -n "$threshold" ] && procd_append_param command --notify-threshold "$threshold"
+	[ -n "$pcap_out" ]  && procd_append_param command --pcap-out "$pcap_out"
 
 	procd_set_param respawn 3600 5 5
 	procd_set_param stdout 1

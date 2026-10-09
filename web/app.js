@@ -22,6 +22,8 @@ const state = {
   expanded: null,
   lastNotify: 0,
   alertedBl: new Set(),
+  rateInSm: null,   // EMA-smoothed incoming rate (anti-jitter)
+  rateOutSm: null,  // EMA-smoothed outgoing rate
 };
 
 // ---------------------------------------------------------------------------
@@ -75,6 +77,9 @@ function escapeHtml(s) {
 function flagEmoji(cc) {
   if (!/^[A-Z]{2}$/.test(cc)) return '';
   return String.fromCodePoint(...[...cc].map((c) => 0x1f1e6 + c.charCodeAt(0) - 65));
+}
+function ema(prev, next, alpha) {
+  return prev == null ? next : prev * (1 - alpha) + next * alpha;
 }
 
 // ---------------------------------------------------------------------------
@@ -165,10 +170,12 @@ function render(snap) {
   setStatus(true);
 
   const t = snap.totals || {};
-  els.rateIn.textContent = fmtRate(t.incoming_rate || 0);
-  els.rateInSub.textContent = `${fmtBytes(t.incoming_rate || 0)}/s`;
-  els.rateOut.textContent = fmtRate(t.outgoing_rate || 0);
-  els.rateOutSub.textContent = `${fmtBytes(t.outgoing_rate || 0)}/s`;
+  state.rateInSm = ema(state.rateInSm, t.incoming_rate || 0, 0.35);
+  state.rateOutSm = ema(state.rateOutSm, t.outgoing_rate || 0, 0.35);
+  els.rateIn.textContent = fmtRate(state.rateInSm);
+  els.rateInSub.textContent = `${fmtBytes(state.rateInSm)}/s`;
+  els.rateOut.textContent = fmtRate(state.rateOutSm);
+  els.rateOutSub.textContent = `${fmtBytes(state.rateOutSm)}/s`;
   els.totalData.textContent = fmtBytes((t.incoming_bytes || 0) + (t.outgoing_bytes || 0));
   els.totalIn.textContent = fmtBytes(t.incoming_bytes || 0);
   els.totalOut.textContent = fmtBytes(t.outgoing_bytes || 0);
@@ -220,14 +227,16 @@ function renderServices(services) {
 function renderDevices(devices) {
   const online = devices.filter((d) => d.online).length;
   els.devSub.textContent = `${online} online`;
-  if (!devices.length) { els.devBody.innerHTML = '<tr><td colspan="4" class="empty">no devices discovered</td></tr>'; return; }
+  if (!devices.length) { els.devBody.innerHTML = '<tr><td colspan="6" class="empty">no devices discovered</td></tr>'; return; }
   els.devBody.innerHTML = devices
-    .slice().sort((a, b) => Number(b.online) - Number(a.online) || a.hostname.localeCompare(b.hostname))
+    .slice().sort((a, b) => Number(b.online) - Number(a.online) || (b.incoming_bytes + b.outgoing_bytes) - (a.incoming_bytes + a.outgoing_bytes))
     .map((d) => `
       <tr>
         <td>${escapeHtml(d.hostname || '—')}</td>
         <td>${escapeHtml(d.mac)}</td>
         <td>${escapeHtml(d.ip)}</td>
+        <td class="num in">${fmtBytes(d.incoming_bytes || 0)}</td>
+        <td class="num out">${fmtBytes(d.outgoing_bytes || 0)}</td>
         <td><span class="status-badge ${d.online ? 'online' : ''}"><span class="dot"></span>${d.online ? 'online' : 'offline'}</span></td>
       </tr>`).join('');
 }

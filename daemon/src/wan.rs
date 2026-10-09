@@ -25,6 +25,42 @@ pub fn detect_wan_device(override_device: Option<&str>) -> Result<String> {
     anyhow::bail!("could not determine the WAN device; pass --interface <dev> explicitly")
 }
 
+/// Resolve the LAN bridge device name (for per-device accounting).
+/// Returns `None` to disable LAN capture.
+pub fn detect_lan_device(override_device: Option<&str>) -> Option<String> {
+    if let Some(d) = override_device {
+        if d.trim().is_empty() {
+            return None; // explicitly disabled via empty value
+        }
+        return Some(d.trim().to_string());
+    }
+    if let Some(d) = interface_device_from_ubus("lan") {
+        return Some(d);
+    }
+    if std::path::Path::new("/sys/class/net/br-lan").exists() {
+        return Some("br-lan".to_string());
+    }
+    None
+}
+
+/// Ask netifd (via ubus) which device backs the given interface.
+fn interface_device_from_ubus(name: &str) -> Option<String> {
+    let out = std::process::Command::new("ubus")
+        .args(["call", &format!("network.interface.{name}"), "status"])
+        .output()
+        .ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    let v: Value = serde_json::from_slice(&out.stdout).ok()?;
+    if let Some(d) = v.get("device").and_then(Value::as_str) {
+        if !d.is_empty() {
+            return Some(d.to_string());
+        }
+    }
+    v.get("l3_device").and_then(Value::as_str).map(str::to_string)
+}
+
 /// Ask netifd (via ubus) which device backs the `wan` interface.
 fn wan_device_from_ubus() -> Option<String> {
     let out = std::process::Command::new("ubus")
