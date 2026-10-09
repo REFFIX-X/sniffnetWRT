@@ -1,0 +1,65 @@
+name: build
+
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch: {}
+
+env:
+  OPENWRT_VERSION: "25.12.0"
+  TARGET_SUBDIR: "mediatek/filogic"
+  GCC: "14.3.0"
+  SDK_URL: "https://downloads.openwrt.org/releases/25.12.0/targets/mediatek/filogic/openwrt-sdk-25.12.0-mediatek-filogic_gcc-14.3.0_musl.Linux-x86_64.tar.xz"
+
+jobs:
+  build:
+    name: build aarch64 (Flint 4)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain (aarch64-musl)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-unknown-linux-musl
+
+      - name: Install host build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential gawk python3 wget unzip file rsync \
+                                  libncurses-dev zlib1g-dev pkg-config
+
+      - name: Download and extract the OpenWrt SDK
+        run: |
+          curl -fL "$SDK_URL" -o sdk.tar.xz
+          mkdir -p sdk
+          tar -xf sdk.tar.xz -C sdk --strip-components=1
+          echo "SDK extracted:"
+          ls sdk
+
+      - name: Build libpcap into the SDK staging dir
+        run: |
+          cd sdk
+          ./scripts/feeds update packages
+          ./scripts/feeds install libpcap
+          make package/libpcap/compile V=s
+
+      - name: Cross-compile sniffnetwrt
+        run: bash openwrt/cross-build.sh
+        env:
+          SDK_DIR: "${{ github.workspace }}/sdk"
+
+      - name: Package the binary + web UI + init scripts
+        run: |
+          mkdir -p dist
+          cp daemon/target/aarch64-unknown-linux-musl/release/sniffnetwrt dist/
+          cp -r web dist/
+          cp openwrt/sniffnetwrt.init dist/
+          cp openwrt/sniffnetwrt.config dist/
+          tar -czf sniffnetwrt-aarch64.tar.gz -C dist .
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sniffnetwrt-aarch64
+          path: sniffnetwrt-aarch64.tar.gz

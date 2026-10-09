@@ -1,0 +1,18 @@
+# Rust
+daemon/target/
+engine/target/
+
+# Downloaded GeoLite2 databases
+db/
+
+# Upstream reference fork (not needed for the build — the trimmed engine is in engine/)
+vendor/sniffnet-src/
+vendor/sniffnet-Cargo.toml
+vendor/sniffnet-build.rs
+
+# OS
+.DS_Store
+Thumbs.db
+
+# local env
+.env

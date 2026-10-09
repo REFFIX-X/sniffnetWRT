@@ -1,0 +1,31 @@
+[package]
+name = "sniffnetwrt"
+version = "0.1.0"
+edition = "2021"
+description = "Headless Sniffnet-style WAN traffic monitor for OpenWrt"
+license = "MIT OR Apache-2.0"
+
+[[bin]]
+name = "sniffnetwrt"
+path = "src/main.rs"
+
+[dependencies]
+sniffnetwrt-engine = { path = "../engine" }
+anyhow = "1"
+async-channel = "2"
+axum = { version = "0.7", features = ["ws"] }
+clap = { version = "4", features = ["derive"] }
+futures-util = "0.3"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "net"] }
+tower-http = { version = "0.5", features = ["fs"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+ureq = { version = "2", features = ["json"] }
+
+[profile.release]
+opt-level = 3
+lto = true
+strip = true
+codegen-units = 1

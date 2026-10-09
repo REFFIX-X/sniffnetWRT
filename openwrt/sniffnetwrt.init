@@ -1,0 +1,55 @@
+#!/bin/sh /etc/rc.common
+# sniffnetwrt - Sniffnet-style WAN traffic monitor (procd service)
+# Installed as /etc/init.d/sniffnetwrt
+
+USE_PROCD=1
+START=95
+STOP=10
+
+PROG=/usr/bin/sniffnetwrt
+WEB_DIR=/usr/share/sniffnetwrt
+
+start_service() {
+	local device port bind token bpf interval mmdb_dir blacklist webhook threshold
+	config_load 'sniffnetwrt'
+	config_get device 'wan' device
+	config_get port 'wan' port '9999'
+	config_get bind 'wan' bind '0.0.0.0'
+	config_get token 'wan' token
+	config_get bpf 'wan' bpf
+	config_get interval 'wan' interval_ms '1000'
+	config_get mmdb_dir 'wan' mmdb_dir '/usr/share/sniffnetwrt'
+	config_get blacklist 'wan' blacklist
+	config_get webhook 'wan' webhook
+	config_get threshold 'wan' notify_threshold
+
+	procd_open_instance
+	procd_set_param command "$PROG" \
+		--web-dir "$WEB_DIR" \
+		--port "$port" \
+		--bind "$bind" \
+		--interval-ms "$interval" \
+		--mmdb-dir "$mmdb_dir"
+
+	# Only pass overrides that are explicitly set (empty => auto-detect WAN).
+	[ -n "$device" ]    && procd_append_param command --interface "$device"
+	[ -n "$token" ]     && procd_append_param command --token "$token"
+	[ -n "$bpf" ]       && procd_append_param command --bpf "$bpf"
+	[ -n "$blacklist" ] && procd_append_param command --blacklist "$blacklist"
+	[ -n "$webhook" ]   && procd_append_param command --webhook "$webhook"
+	[ -n "$threshold" ] && procd_append_param command --notify-threshold "$threshold"
+
+	procd_set_param respawn 3600 5 5
+	procd_set_param stdout 1
+	procd_set_param stderr 1
+	procd_close_instance
+}
+
+reload_service() {
+	stop
+	start
+}
+
+service_triggers() {
+	procd_add_reload_trigger 'sniffnetwrt'
+}

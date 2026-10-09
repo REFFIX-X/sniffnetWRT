@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>sniffnetWRT</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🕵️</text></svg>" />
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body data-theme="dark">
+    <header class="topbar">
+      <div class="brand">
+        <span class="logo">🕵️</span>
+        <span class="title">sniffnet<em>WRT</em></span>
+      </div>
+      <nav class="tabs" id="tabs">
+        <button class="tab active" data-tab="overview">Overview</button>
+        <button class="tab" data-tab="connections">Connections</button>
+        <button class="tab" data-tab="devices">Devices</button>
+        <button class="tab" data-tab="settings">Settings</button>
+      </nav>
+      <div class="meta">
+        <span class="chip" id="iface">wan</span>
+        <span class="chip status" id="status"><span class="dot" id="dot"></span><span id="statusText">connecting…</span></span>
+        <span class="chip" id="clock">--:--:--</span>
+      </div>
+    </header>
+
+    <main>
+      <!-- ══════════ OVERVIEW ══════════ -->
+      <section class="tab-panel" id="tab-overview">
+        <section class="cards" id="healthCards">
+          <article class="card"><header class="card-head">Load</header><div class="card-value" id="hLoad">—</div><div class="card-sub" id="hLoadSub">1 / 5 / 15 min</div></article>
+          <article class="card"><header class="card-head">Memory</header><div class="card-value" id="hMem">—</div><div class="card-sub" id="hMemSub">used / total</div></article>
+          <article class="card"><header class="card-head">Temp</header><div class="card-value" id="hTemp">—</div><div class="card-sub">SoC</div></article>
+          <article class="card"><header class="card-head">Uptime</header><div class="card-value" id="hUp">—</div><div class="card-sub" id="hUpSub">router</div></article>
+        </section>
+
+        <section class="cards" id="cards">
+          <article class="card">
+            <header class="card-head"><span class="arrow down">▼</span> Incoming rate</header>
+            <div class="card-value" id="rateIn">0 bps</div>
+            <div class="card-sub" id="rateInSub">0 B/s</div>
+          </article>
+          <article class="card">
+            <header class="card-head"><span class="arrow up">▲</span> Outgoing rate</header>
+            <div class="card-value" id="rateOut">0 bps</div>
+            <div class="card-sub" id="rateOutSub">0 B/s</div>
+          </article>
+          <article class="card">
+            <header class="card-head">Total data</header>
+            <div class="card-value" id="totalData">0 B</div>
+            <div class="card-sub"><span class="in">▼ <span id="totalIn">0 B</span></span> · <span class="out">▲ <span id="totalOut">0 B</span></span></div>
+          </article>
+          <article class="card">
+            <header class="card-head">Connections</header>
+            <div class="card-value" id="connCount">0</div>
+            <div class="card-sub">active flows</div>
+          </article>
+          <article class="card">
+            <header class="card-head">Packets</header>
+            <div class="card-value" id="pktCount">0</div>
+            <div class="card-sub" id="pktSub">0 total</div>
+          </article>
+        </section>
+
+        <section class="row">
+          <article class="panel chart-panel">
+            <header class="panel-head">
+              <span>Traffic rate</span>
+              <span class="legend">
+                <span class="legend-in"><i></i> incoming</span>
+                <span class="legend-out"><i></i> outgoing</span>
+              </span>
+            </header>
+            <canvas id="chart" height="280"></canvas>
+          </article>
+          <article class="panel services-panel">
+            <header class="panel-head"><span>Services</span></header>
+            <ul class="services" id="services"><li class="empty">waiting for traffic…</li></ul>
+          </article>
+        </section>
+
+        <section class="panel wan-panel">
+          <header class="panel-head"><span>WAN link</span><span class="sub" id="wanDev">—</span></header>
+          <div class="wan-grid">
+            <div class="wan-cell"><span class="wan-label">IPv4</span><span class="wan-value" id="wanIp">—</span></div>
+            <div class="wan-cell"><span class="wan-label">Uptime</span><span class="wan-value" id="wanUp">—</span></div>
+            <div class="wan-cell"><span class="wan-label">RX</span><span class="wan-value in" id="wanRx">—</span></div>
+            <div class="wan-cell"><span class="wan-label">TX</span><span class="wan-value out" id="wanTx">—</span></div>
+          </div>
+        </section>
+      </section>
+
+      <!-- ══════════ CONNECTIONS ══════════ -->
+      <section class="tab-panel hidden" id="tab-connections">
+        <div class="toolbar">
+          <input type="search" id="search" placeholder="Search IP, domain, ASN, service…" autocomplete="off" />
+          <select id="catFilter"><option value="">All categories</option></select>
+          <select id="dirFilter">
+            <option value="">Both directions</option>
+            <option value="incoming">Incoming</option>
+            <option value="outgoing">Outgoing</option>
+          </select>
+          <label class="chip"><input type="checkbox" id="favOnly" /> ★ Favorites</label>
+          <label class="chip"><input type="checkbox" id="blOnly" /> 🚫 Blacklisted</label>
+        </div>
+        <article class="panel table-panel">
+          <header class="panel-head"><span>Connections</span><span class="sub" id="connSub">0 shown</span></header>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th class="w-star"></th>
+                  <th data-sort="src_ip">Source</th>
+                  <th data-sort="dst_ip">Destination</th>
+                  <th data-sort="protocol">Proto</th>
+                  <th data-sort="service">Service</th>
+                  <th data-sort="direction">Dir</th>
+                  <th data-sort="bytes" class="num">Bytes</th>
+                  <th data-sort="packets" class="num">Packets</th>
+                  <th data-sort="last_seen" class="num">Last seen</th>
+                </tr>
+              </thead>
+              <tbody id="connBody"><tr><td colspan="9" class="empty">no traffic yet</td></tr></tbody>
+            </table>
+          </div>
+        </article>
+      </section>
+
+      <!-- ══════════ DEVICES ══════════ -->
+      <section class="tab-panel hidden" id="tab-devices">
+        <article class="panel table-panel">
+          <header class="panel-head"><span>LAN clients</span><span class="sub" id="devSub">0 online</span></header>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr><th>Hostname</th><th>MAC</th><th>IPv4</th><th>Status</th></tr>
+              </thead>
+              <tbody id="devBody"><tr><td colspan="4" class="empty">no devices discovered</td></tr></tbody>
+            </table>
+          </div>
+          <p class="hint">Discovered via ARP + DHCP leases. Per-device <em>bandwidth</em> requires a LAN (br-lan) capture or nlbwmon — on the roadmap.</p>
+        </article>
+      </section>
+
+      <!-- ══════════ SETTINGS ══════════ -->
+      <section class="tab-panel hidden" id="tab-settings">
+        <article class="panel">
+          <header class="panel-head"><span>Theme</span></header>
+          <div class="theme-row" id="themes">
+            <button class="theme-btn" data-theme-choice="dark"><span class="swatch" style="--a:#1c2128;--b:#569df5;--c:#5aad5d"></span>Footstrap <em class="muted">(default)</em></button>
+            <button class="theme-btn" data-theme-choice="light"><span class="swatch" style="--a:#f6f8fa;--b:#0969da;--c:#197c36"></span>Light</button>
+            <button class="theme-btn" data-theme-choice="ocean"><span class="swatch" style="--a:#002b49;--b:#35c6ea;--c:#74cc74"></span>Ocean</button>
+            <button class="theme-btn" data-theme-choice="ember"><span class="swatch" style="--a:#0a0d13;--b:#3ba7ff;--c:#43e0a0"></span>Hicontrast</button>
+          </div>
+        </article>
+
+        <article class="panel">
+          <header class="panel-head"><span>Notifications</span></header>
+          <div class="setting-row">
+            <label class="chip"><input type="checkbox" id="notifyEnabled" /> Browser alerts (needs permission)</label>
+            <label class="setting-label">Rate threshold (Mbps): <input type="number" id="notifyThreshold" min="0" step="1" value="0" /></label>
+            <span class="hint">Alerts when total throughput exceeds the threshold. 0 = disabled.</span>
+          </div>
+        </article>
+
+        <article class="panel">
+          <header class="panel-head"><span>Favorites</span></header>
+          <div class="setting-row">
+            <button class="btn" id="clearFavs">Clear favorites</button>
+            <span class="hint">Starred connections are kept in this browser only.</span>
+          </div>
+        </article>
+      </section>
+    </main>
+
+    <script src="app.js"></script>
+  </body>
+</html>

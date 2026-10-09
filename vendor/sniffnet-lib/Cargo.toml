@@ -1,0 +1,15 @@
+[package]
+name = "sniffnet-packet-parser"
+version = "0.2.1"
+edition = "2021"
+description = "Network packet parser for Sniffnet"
+license = "MIT OR Apache-2.0"
+
+[features]
+default = ["full"]
+# without this only `Protocol` is available
+full = ["dep:etherparse", "dep:pcap"]
+
+[dependencies]
+etherparse = { version = "0.21", optional = true }
+pcap = { version = "2", optional = true }

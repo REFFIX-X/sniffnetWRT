@@ -1,0 +1,24 @@
+[package]
+name = "sniffnetwrt-engine"
+version = "0.1.0"
+edition = "2021"
+description = "Headless extraction of Sniffnet's packet-capture engine"
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+sniffnet-packet-parser = { path = "../vendor/sniffnet-lib" }
+async-channel = "2"
+dns-lookup = "4"
+ipnet = "2"
+maxminddb = "0.32"
+pcap = "2"
+phf = "0.14"
+phf_shared = "0.14"
+prefix-trie = "0.10"
+serde = { version = "1", features = ["derive"] }
+tokio = { version = "1", features = ["fs", "sync", "macros", "rt"] }
+
+[build-dependencies]
+phf_codegen = "0.14"
+phf_shared = "0.14"
+sniffnet-packet-parser = { path = "../vendor/sniffnet-lib", default-features = false }
