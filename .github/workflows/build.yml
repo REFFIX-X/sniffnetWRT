@@ -27,7 +27,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y build-essential gawk python3 wget unzip file rsync \
-                                  libncurses-dev zlib1g-dev pkg-config zstd cmake ninja-build
+                                  libncurses-dev zlib1g-dev pkg-config zstd cmake ninja-build flex bison
 
       - name: Download and extract the OpenWrt SDK
         run: |
@@ -37,11 +37,21 @@ jobs:
           echo "SDK extracted:"
           ls sdk
 
-      - name: Build libpcap into the SDK staging dir
+      - name: Cross-compile libpcap (manual)
         run: |
-          cd sdk
-          make defconfig
-          make package/libs/libpcap/compile V=s
+          STAGING_DIR="${{ github.workspace }}/sdk/staging_dir"
+          TOOLCHAIN_DIR=$(ls -d "$STAGING_DIR"/toolchain-* | head -n1)
+          TARGET_DIR=$(ls -d "$STAGING_DIR"/target-* | head -n1)
+          CC="$TOOLCHAIN_DIR/bin/aarch64-openwrt-linux-musl-gcc"
+          echo "toolchain: $TOOLCHAIN_DIR"
+          echo "target:    $TARGET_DIR"
+          curl -fL https://www.tcpdump.org/release/libpcap-1.10.5.tar.xz -o libpcap.tar.xz
+          tar -xf libpcap.tar.xz
+          cd libpcap-1.10.5
+          ./configure --host=aarch64-openwrt-linux-musl --with-pcap=linux --prefix=/usr CC="$CC"
+          make -j"$(nproc)"
+          make install DESTDIR="$TARGET_DIR"
+          ls "$TARGET_DIR/usr/lib/pkgconfig" "$TARGET_DIR/usr/lib" 2>&1 | head -20
 
       - name: Cross-compile sniffnetwrt
         run: bash openwrt/cross-build.sh
