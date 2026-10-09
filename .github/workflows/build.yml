@@ -42,6 +42,7 @@ jobs:
           cd sdk
           ./scripts/feeds update packages
           ./scripts/feeds install libpcap
+          make defconfig
           make package/libpcap/compile V=s
 
       - name: Cross-compile sniffnetwrt
