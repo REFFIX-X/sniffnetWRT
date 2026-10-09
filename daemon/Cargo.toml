@@ -14,7 +14,7 @@ sniffnetwrt-engine = { path = "../engine" }
 anyhow = "1"
 async-channel = "2"
 axum = { version = "0.7", features = ["ws"] }
-clap = { version = "4", features = ["derive"] }
+clap = { version = "4", features = ["derive", "env"] }
 futures-util = "0.3"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

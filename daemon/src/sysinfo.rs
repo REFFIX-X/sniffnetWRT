@@ -92,7 +92,7 @@ pub fn devices() -> Vec<Device> {
                 let e = map.entry(mac.clone()).or_insert_with(|| Device {
                     mac,
                     ip,
-                    hostname,
+                    hostname: hostname.clone(),
                     online: false,
                 });
                 if !hostname.is_empty() && hostname != "*" {
