@@ -134,8 +134,6 @@ pub fn modify_or_insert_in_map(
                 service: _,
                 traffic_direction: _,
                 is_blacklisted: _,
-                // determined later
-                program: _,
             } = info;
 
             *tot_bytes += bytes;
