@@ -3,7 +3,7 @@
 #
 # Prerequisites:
 #   1. Extract the matching OpenWrt SDK, e.g.:
-#      openwrt-sdk-25.12.0-mediatek-filogic_gcc-14.3.0_musl.Linux-x86_64.tar.xz
+#      openwrt-sdk-25.12.0-mediatek-filogic_gcc-14.3.0_musl.Linux-x86_64.tar.zst
 #   2. rustup with the aarch64 musl target.
 #
 # Usage:
