@@ -30,6 +30,10 @@
     <main>
       <!-- ══════════ OVERVIEW ══════════ -->
       <section class="tab-panel overview-grid" id="tab-overview">
+        <section class="page-banner overview-banner">
+          <div class="page-banner-copy"><div class="eyebrow"><span class="pulse-mark"></span> LIVE NETWORK · FLINT 4</div><h1>Network at a glance</h1><p>Live traffic, active services, and router health in one view.</p></div>
+          <div class="banner-readout"><span class="banner-orbit">↗</span><span><b>WAN MONITOR</b><small>Live capture telemetry</small></span></div>
+        </section>
         <section class="cards" id="healthCards">
           <article class="card"><header class="card-head">Load</header><div class="card-value" id="hLoad">—</div><div class="card-sub" id="hLoadSub">1 / 5 / 15 min</div></article>
           <article class="card"><header class="card-head">Memory</header><div class="card-value" id="hMem">—</div><div class="card-sub" id="hMemSub">used / total</div></article>
@@ -77,8 +81,9 @@
             <canvas id="chart" height="280"></canvas>
           </article>
           <article class="panel services-panel">
-            <header class="panel-head"><span>Services</span></header>
+            <header class="panel-head"><span>Services</span><div class="service-tools"><span class="sub" id="serviceCount">0 observed</span><button type="button" class="text-btn" id="serviceToggle">Show all</button></div></header>
             <ul class="services" id="services"><li class="empty">waiting for traffic…</li></ul>
+            <p class="service-note">Traffic by detected service · observed during this capture</p>
           </article>
         </section>
 
@@ -95,6 +100,10 @@
 
       <!-- ══════════ CONNECTIONS ══════════ -->
       <section class="tab-panel hidden" id="tab-connections">
+        <section class="page-banner connections-banner">
+          <div class="page-banner-copy"><div class="eyebrow"><span class="pulse-mark"></span> FLOW EXPLORER</div><h1>Connections</h1><p>Explore the conversations currently crossing your WAN.</p></div>
+          <div class="banner-readout"><span class="banner-orbit">⌁</span><span><b id="connectionBannerCount">— FLOWS</b><small>Live flow table</small></span></div>
+        </section>
         <div class="toolbar">
           <input type="search" id="search" placeholder="Search IP, domain, ASN, service…" autocomplete="off" />
           <select id="catFilter"><option value="">All categories</option></select>
@@ -130,7 +139,7 @@
 
       <!-- ══════════ SECURITY ══════════ -->
       <section class="tab-panel hidden security-panel" id="tab-security">
-        <section class="security-hero">
+        <section class="page-banner security-hero">
           <div class="security-copy">
             <div class="eyebrow"><span class="pulse-mark"></span> PERIMETER WATCH</div>
             <h1>Inbound security</h1>
@@ -163,6 +172,10 @@
 
       <!-- ══════════ DEVICES ══════════ -->
       <section class="tab-panel hidden" id="tab-devices">
+        <section class="page-banner devices-banner">
+          <div class="page-banner-copy"><div class="eyebrow"><span class="pulse-mark"></span> LOCAL NETWORK</div><h1>Devices</h1><p>See who is online and how bandwidth moves across your LAN.</p></div>
+          <div class="banner-readout"><span class="banner-orbit">⌂</span><span><b id="deviceBannerCount">— ONLINE</b><small>ARP + DHCP inventory</small></span></div>
+        </section>
         <article class="panel table-panel">
           <header class="panel-head"><span>LAN clients</span><span class="sub" id="devSub">0 online</span></header>
           <div class="table-wrap">
@@ -179,6 +192,10 @@
 
       <!-- ══════════ SETTINGS ══════════ -->
       <section class="tab-panel hidden" id="tab-settings">
+        <section class="page-banner settings-banner">
+          <div class="page-banner-copy"><div class="eyebrow"><span class="pulse-mark"></span> PERSONALIZE</div><h1>Settings</h1><p>Shape how sniffnetWRT looks, updates, and notifies you.</p></div>
+          <div class="banner-readout"><span class="banner-orbit">⚙</span><span><b>YOUR CONSOLE</b><small>Preferences saved in browser</small></span></div>
+        </section>
         <article class="panel">
           <header class="panel-head"><span>Dashboard updates</span></header>
           <div class="setting-row">

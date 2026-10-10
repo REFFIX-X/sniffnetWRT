@@ -33,6 +33,7 @@ const state = {
   rateSampleCount: 0,
   lastDeviceAlert: 0,
   lastSpikeAlert: 0,
+  showAllServices: false,
 };
 
 // ---------------------------------------------------------------------------
@@ -47,6 +48,8 @@ const els = {
   totalData: $('totalData'), totalIn: $('totalIn'), totalOut: $('totalOut'),
   connCount: $('connCount'), pktCount: $('pktCount'), pktSub: $('pktSub'),
   services: $('services'), chart: $('chart'),
+  serviceCount: $('serviceCount'), serviceToggle: $('serviceToggle'),
+  connectionBannerCount: $('connectionBannerCount'), deviceBannerCount: $('deviceBannerCount'),
   wanDev: $('wanDev'), wanIp: $('wanIp'), wanUp: $('wanUp'), wanRx: $('wanRx'), wanTx: $('wanTx'),
   search: $('search'), catFilter: $('catFilter'), dirFilter: $('dirFilter'),
   connSub: $('connSub'), connBody: $('connBody'),
@@ -243,19 +246,37 @@ function renderWan(w) {
 }
 
 function renderServices(services) {
-  if (!services.length) { els.services.innerHTML = '<li class="empty">waiting for traffic…</li>'; return; }
-  const max = Math.max(...services.map((s) => s.bytes), 1);
-  els.services.innerHTML = services.slice(0, 12).map((s) => `
+  const ranked = services.slice().sort((a, b) => b.bytes - a.bytes);
+  els.serviceCount.textContent = `${ranked.length} observed`;
+  const canExpand = ranked.length > 12;
+  els.serviceToggle.classList.toggle('hidden', !canExpand);
+  els.serviceToggle.textContent = state.showAllServices ? 'Top 12' : `Show all ${ranked.length}`;
+  els.services.classList.toggle('all-services', state.showAllServices && canExpand);
+  if (!ranked.length) { els.services.innerHTML = '<li class="empty">waiting for traffic…</li>'; return; }
+  const max = Math.max(...ranked.map((s) => s.bytes), 1);
+  const shown = state.showAllServices ? ranked : ranked.slice(0, 12);
+  els.services.innerHTML = shown.map((s, index) => `
     <li>
+      <span class="service-rank" style="--service-color:${serviceColor(s.name)}">${String(index + 1).padStart(2, '0')}</span>
       <span class="name" title="${escapeHtml(s.name)}">${escapeHtml(s.name)}</span>
-      <span class="bar-track"><span class="bar" style="width:${(s.bytes / max) * 100}%"></span></span>
+      <span class="bar-track" title="${((s.bytes / max) * 100).toFixed(1)}% of the leading service"><span class="bar" style="--service-color:${serviceColor(s.name)};width:${(s.bytes / max) * 100}%"></span></span>
       <span class="bytes">${fmtBytes(s.bytes)}</span>
     </li>`).join('');
 }
+function serviceColor(name) {
+  let hash = 0;
+  for (const char of name) hash = (hash * 31 + char.charCodeAt(0)) | 0;
+  return `hsl(${165 + (Math.abs(hash) % 105)} 74% 62%)`;
+}
+els.serviceToggle.addEventListener('click', () => {
+  state.showAllServices = !state.showAllServices;
+  renderServices(state.last?.services || []);
+});
 
 function renderDevices(devices) {
   const online = devices.filter((d) => d.online).length;
   els.devSub.textContent = `${online} online`;
+  els.deviceBannerCount.textContent = `${online} ONLINE`;
   if (!devices.length) { els.devBody.innerHTML = '<tr><td colspan="6" class="empty">no devices discovered</td></tr>'; return; }
   els.devBody.innerHTML = devices
     .slice().sort((a, b) => Number(b.online) - Number(a.online) || (b.incoming_bytes + b.outgoing_bytes) - (a.incoming_bytes + a.outgoing_bytes))
@@ -316,6 +337,7 @@ function filteredConnections() {
 function renderTable() {
   const conns = filteredConnections();
   els.connCount.textContent = (state.last?.connections || []).length;
+  els.connectionBannerCount.textContent = `${(state.last?.connections || []).length} FLOWS`;
   els.connSub.textContent = `${conns.length} shown`;
   if (!conns.length) {
     els.connBody.innerHTML = '<tr><td colspan="9" class="empty">no traffic yet</td></tr>';
