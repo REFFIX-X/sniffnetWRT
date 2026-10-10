@@ -71,7 +71,7 @@ To upgrade, run the same two commands again. To install a specific tarball
 instead of the latest release, pass its path or URL to the installer:
 
 ```sh
-sh /tmp/sniffnetwrt-install.sh https://github.com/REFFIX-X/sniffnetWRT/releases/download/v1.1.0/sniffnetwrt-aarch64.tar.gz
+sh /tmp/sniffnetwrt-install.sh https://github.com/REFFIX-X/sniffnetWRT/releases/download/v1.2.0/sniffnetwrt-aarch64.tar.gz
 ```
 
 Traffic statistics stay in memory. PCAP recording is off by default, so the

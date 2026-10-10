@@ -22,7 +22,7 @@ blocked from untrusted networks; use the OpenWrt firewall and a LAN-only bind.
 To install a specific release, pass its tarball URL:
 
 ```sh
-sh /tmp/sniffnetwrt-install.sh https://github.com/REFFIX-X/sniffnetWRT/releases/download/v1.1.0/sniffnetwrt-aarch64.tar.gz
+sh /tmp/sniffnetwrt-install.sh https://github.com/REFFIX-X/sniffnetWRT/releases/download/v1.2.0/sniffnetwrt-aarch64.tar.gz
 ```
 
 To opt into rate-limited WAN firewall rejection events during install:
