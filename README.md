@@ -199,6 +199,8 @@ into a full router traffic monitor:
 - router **health** (load/RAM/temp/uptime), **WAN status**, and **LAN clients**,
 - dashboard tabs (Overview / Connections / Security / Devices / Settings) with **search,
   filters, themes, service categories, GeoIP flags, per-connection detail, and CSV export**,
+- connection traffic types combine Sniffnet's service catalog with clearly labeled domain/port
+  hints for streaming, social, cloud/CDN, IoT, DNS, remote access, storage, databases, and VPNs,
 - Overview service rankings include every service type observed in the current live capture;
   the dashboard shows the top 12 by default and can expand to the full observed list,
 - a distinct, color-coded header banner on every dashboard tab,

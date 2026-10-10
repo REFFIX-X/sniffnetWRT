@@ -51,7 +51,7 @@ const els = {
   serviceCount: $('serviceCount'), serviceToggle: $('serviceToggle'),
   connectionBannerCount: $('connectionBannerCount'), deviceBannerCount: $('deviceBannerCount'),
   wanDev: $('wanDev'), wanIp: $('wanIp'), wanUp: $('wanUp'), wanRx: $('wanRx'), wanTx: $('wanTx'),
-  search: $('search'), catFilter: $('catFilter'), dirFilter: $('dirFilter'),
+  search: $('search'), catFilter: $('catFilter'), dirFilter: $('dirFilter'), categorySummary: $('categorySummary'),
   connSub: $('connSub'), connBody: $('connBody'),
   devSub: $('devSub'), devBody: $('devBody'),
   notifyEnabled: $('notifyEnabled'), notifyThreshold: $('notifyThreshold'),
@@ -310,11 +310,82 @@ function sampleDeviceRates(snap) {
 }
 
 function buildCategoryFilter(conns) {
-  const cats = [...new Set(conns.map((c) => c.category).filter(Boolean))].sort();
+  const counts = new Map();
+  for (const conn of conns) {
+    const kind = classifyTraffic(conn).name;
+    counts.set(kind, (counts.get(kind) || 0) + 1);
+  }
+  const cats = [...counts.keys()].sort((a, b) => a.localeCompare(b));
   const cur = els.catFilter.value;
-  els.catFilter.innerHTML = '<option value="">All categories</option>' + cats.map((c) => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join('');
-  els.catFilter.value = cur;
+  const categoryKey = JSON.stringify(cats);
+  if (els.catFilter.dataset.categories !== categoryKey) {
+    els.catFilter.dataset.categories = categoryKey;
+    els.catFilter.innerHTML = '<option value="">All categories</option>' + cats.map((c) => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join('');
+  }
+  els.catFilter.value = counts.has(cur) ? cur : '';
+  state.catFilter = els.catFilter.value;
+  if (els.categorySummary.dataset.categories !== categoryKey) {
+    els.categorySummary.dataset.categories = categoryKey;
+    els.categorySummary.innerHTML = `<button class="category-chip" type="button" data-category=""><span>ALL TRAFFIC</span><b class="category-count"></b></button>` + cats.map((name) =>
+      `<button class="category-chip" type="button" data-category="${escapeHtml(name)}" style="--category-color:${categoryColor(name)}"><span>${escapeHtml(name)}</span><b class="category-count"></b></button>`
+    ).join('');
+  }
+  for (const button of els.categorySummary.querySelectorAll('button[data-category]')) {
+    const name = button.dataset.category;
+    const active = state.catFilter === name;
+    button.classList.toggle('active', active);
+    button.setAttribute('aria-pressed', String(active));
+    button.querySelector('.category-count').textContent = name ? String(counts.get(name) || 0) : String(conns.length);
+  }
 }
+
+const DOMAIN_TRAFFIC_HINTS = [
+  [/youtube|googlevideo|ytimg|netflix|nflxvideo|spotify|scdn|disneyplus|primevideo|twitch|hulu|hbomax|media-amazon/i, 'Streaming Media'],
+  [/facebook|fbcdn|instagram|whatsapp|messenger|tiktok|twitter|x\.com|reddit|discord|telegram|signal\.org/i, 'Social & Messaging'],
+  [/cloudflare|akamai|fastly|cloudfront|amazonaws|azureedge|googleapis|googleusercontent|edgekey|edgesuite/i, 'Cloud & CDN'],
+  [/home-assistant|esphome|tuya|philips-hue|ring\.com|nest\.com|smartthings/i, 'Smart Home & IoT'],
+  [/windowsupdate|update\.microsoft|swcdn|software-update|apple\.com\.cdn/i, 'Software Updates'],
+];
+
+function classifyTraffic(conn) {
+  const signature = String(conn.category || '').trim();
+  const service = String(conn.service || '').toLowerCase();
+  const genericWeb = ['web', 'web & apis'].includes(signature.toLowerCase()) || ['http', 'https', 'quic'].includes(service);
+  const hasServiceMatch = signature && signature.toLowerCase() !== 'other' && service !== '?' && service !== '-';
+  if (hasServiceMatch && !genericWeb) {
+    return { name: signature, source: 'Service catalog match' };
+  }
+  const domain = String(conn.domain || '').toLowerCase();
+  for (const [pattern, name] of DOMAIN_TRAFFIC_HINTS) {
+    if (pattern.test(domain)) return { name, source: 'Domain hint · heuristic' };
+  }
+  if (hasServiceMatch) return { name: signature, source: 'Service catalog match' };
+  const ports = new Set([Number(conn.src_port), Number(conn.dst_port)]);
+  const has = (...values) => values.some((port) => ports.has(port));
+  if (has(53, 853)) return { name: 'DNS & Naming', source: 'Port hint · heuristic' };
+  if (has(25, 110, 143, 465, 587, 993, 995)) return { name: 'Email', source: 'Port hint · heuristic' };
+  if (has(22, 23, 3389, 5900, 5901)) return { name: 'Remote Access', source: 'Port hint · heuristic' };
+  if (has(20, 21, 445, 873, 2049)) return { name: 'File & Storage', source: 'Port hint · heuristic' };
+  if (has(3306, 5432, 6379, 9042, 27017)) return { name: 'Databases', source: 'Port hint · heuristic' };
+  if (has(67, 68, 123, 161, 162, 1900, 5353)) return { name: 'Network Services', source: 'Port hint · heuristic' };
+  if (has(500, 1194, 1701, 4500, 51820)) return { name: 'VPN & Tunnels', source: 'Port hint · heuristic' };
+  if (has(80, 443, 8080, 8443)) return { name: 'Web & APIs', source: 'Port hint · heuristic' };
+  return { name: 'Unclassified', source: 'No reliable service match' };
+}
+
+function categoryColor(name) {
+  let hash = 0;
+  for (const char of name) hash = (hash * 31 + char.charCodeAt(0)) | 0;
+  return `hsl(${(Math.abs(hash) % 280) + 40} 74% 65%)`;
+}
+els.categorySummary.addEventListener('click', (event) => {
+  const button = event.target.closest('button[data-category]');
+  if (!button) return;
+  state.catFilter = button.dataset.category;
+  els.catFilter.value = state.catFilter;
+  renderTable();
+  buildCategoryFilter(state.last?.connections || []);
+});
 
 // ---------------------------------------------------------------------------
 // Connections table + filters
@@ -324,10 +395,11 @@ function filteredConnections() {
   const q = state.search.toLowerCase();
   return conns.filter((c) => {
     if (state.dirFilter && c.direction !== state.dirFilter) return false;
-    if (state.catFilter && c.category !== state.catFilter) return false;
+    const kind = classifyTraffic(c);
+    if (state.catFilter && kind.name !== state.catFilter) return false;
     if (q) {
       const domain = els.hideDomains.checked ? '' : (c.domain || '');
-      const hay = `${c.src_ip} ${c.dst_ip} ${c.service} ${c.category} ${c.protocol} ${domain} ${c.asn || ''} ${c.country || ''}`.toLowerCase();
+      const hay = `${c.src_ip} ${c.dst_ip} ${c.service} ${kind.name} ${kind.source} ${c.protocol} ${domain} ${c.asn || ''} ${c.country || ''}`.toLowerCase();
       if (!hay.includes(q)) return false;
     }
     return true;
@@ -336,11 +408,15 @@ function filteredConnections() {
 
 function renderTable() {
   const conns = filteredConnections();
+  document.querySelectorAll('#tab-connections th[data-sort]').forEach((th) => {
+    th.setAttribute('aria-sort', state.sortKey === th.dataset.sort ? (state.sortAsc ? 'ascending' : 'descending') : 'none');
+  });
   els.connCount.textContent = (state.last?.connections || []).length;
   els.connectionBannerCount.textContent = `${(state.last?.connections || []).length} FLOWS`;
   els.connSub.textContent = `${conns.length} shown`;
   if (!conns.length) {
-    els.connBody.innerHTML = '<tr><td colspan="9" class="empty">no traffic yet</td></tr>';
+    const emptyMessage = (state.last?.connections || []).length ? 'No connections match these filters.' : 'Waiting for traffic…';
+    els.connBody.innerHTML = `<tr><td colspan="10" class="empty">${emptyMessage}</td></tr>`;
     return;
   }
   const sorted = [...conns].sort(cmpConn);
@@ -354,6 +430,7 @@ function rowHtml(c) {
     <td class="geo-cell">${countryBadge(c.country)}</td>
     <td>${escapeHtml(c.protocol)}</td>
     <td><span class="badge ${escapeHtml(c.service)}">${escapeHtml(c.service)}</span></td>
+    <td>${trafficBadge(c)}</td>
     <td class="dir ${c.direction === 'incoming' ? 'in' : 'out'}">${c.direction === 'incoming' ? '▼' : '▲'}</td>
     <td class="num">${fmtBytes(c.bytes)}</td>
     <td class="num">${c.packets}</td>
@@ -366,10 +443,16 @@ function detailHtml(c) {
   if (!els.hideDomains.checked && c.domain) rows.push(`<span><b>Domain</b> ${escapeHtml(c.domain)}</span>`);
   if (c.country) rows.push(`<span><b>Country</b> ${escapeHtml(c.country)}</span>`);
   if (c.asn) rows.push(`<span><b>ASN</b> ${escapeHtml(c.asn)}</span>`);
-  rows.push(`<span><b>Category</b> ${escapeHtml(c.category || '—')}</span>`);
+  const kind = classifyTraffic(c);
+  rows.push(`<span><b>Traffic type</b> ${escapeHtml(kind.name)} <small>(${escapeHtml(kind.source)})</small></span>`);
   rows.push(`<span><b>First seen</b> ${timeHms(c.first_seen)}</span>`);
   rows.push(`<span><b>In/Out</b> ${fmtBytes(c.incoming_bytes)} / ${fmtBytes(c.outgoing_bytes)}</span>`);
-  return `<tr class="detail-row hidden" data-detail="${escapeHtml(c.id)}"><td colspan="9"><div class="detail-grid">${rows.join('')}</div></td></tr>`;
+  return `<tr class="detail-row hidden" data-detail="${escapeHtml(c.id)}"><td colspan="10"><div class="detail-grid">${rows.join('')}</div></td></tr>`;
+}
+
+function trafficBadge(conn) {
+  const kind = classifyTraffic(conn);
+  return `<span class="traffic-badge" style="--category-color:${categoryColor(kind.name)}" title="${escapeHtml(kind.source)}">${escapeHtml(kind.name)}</span>`;
 }
 
 function fmtEndpoint(ip, port) { return port ? `${ip}:${port}` : ip; }
@@ -486,8 +569,11 @@ function filteredSecurityEvents() {
   });
 }
 els.exportConnections.addEventListener('click', () => {
-  const records = filteredConnections().map((c) => [c.src_ip, c.src_port, c.dst_ip, c.dst_port, els.hideDomains.checked ? '' : (c.domain || ''), c.country || '', c.asn || '', c.protocol, c.service, c.category, c.direction, c.bytes, c.packets, c.first_seen, c.last_seen]);
-  exportCsv('sniffnetwrt-connections.csv', ['source_ip', 'source_port', 'destination_ip', 'destination_port', 'domain', 'country', 'asn', 'protocol', 'service', 'category', 'direction', 'bytes', 'packets', 'first_seen_unix', 'last_seen_unix'], records);
+  const records = filteredConnections().map((c) => {
+    const kind = classifyTraffic(c);
+    return [c.src_ip, c.src_port, c.dst_ip, c.dst_port, els.hideDomains.checked ? '' : (c.domain || ''), c.country || '', c.asn || '', c.protocol, c.service, kind.name, kind.source, c.direction, c.bytes, c.packets, c.first_seen, c.last_seen];
+  });
+  exportCsv('sniffnetwrt-connections.csv', ['source_ip', 'source_port', 'destination_ip', 'destination_port', 'domain', 'country', 'asn', 'protocol', 'service', 'traffic_type', 'classification_basis', 'direction', 'bytes', 'packets', 'first_seen_unix', 'last_seen_unix'], records);
 });
 els.exportSecurity.addEventListener('click', () => {
   const records = filteredSecurityEvents().map((event) => [new Date(event.timestamp * 1000).toISOString(), event.source_ip, event.source_port || '', event.country || '', event.target, event.destination_ip, event.destination_port || '', event.protocol, 'REJECT']);
@@ -501,7 +587,8 @@ els.hideDomains.addEventListener('change', () => {
 function cmpConn(a, b) {
   const k = state.sortKey;
   let r = 0;
-  if (typeof a[k] === 'number') r = a[k] - b[k];
+  if (k === 'category') r = classifyTraffic(a).name.localeCompare(classifyTraffic(b).name);
+  else if (typeof a[k] === 'number') r = a[k] - b[k];
   else r = String(a[k]).localeCompare(String(b[k]));
   return state.sortAsc ? r : -r;
 }
@@ -524,14 +611,20 @@ els.connBody.addEventListener('click', (e) => {
 // ---------------------------------------------------------------------------
 els.search.addEventListener('input', (e) => { state.search = e.target.value; renderTable(); });
 els.dirFilter.addEventListener('change', (e) => { state.dirFilter = e.target.value; renderTable(); });
-els.catFilter.addEventListener('change', (e) => { state.catFilter = e.target.value; renderTable(); });
+els.catFilter.addEventListener('change', (e) => { state.catFilter = e.target.value; renderTable(); buildCategoryFilter(state.last?.connections || []); });
 
 document.querySelectorAll('#tab-connections th[data-sort]').forEach((th) => {
-  th.addEventListener('click', () => {
+  const sort = () => {
     const k = th.dataset.sort;
     if (state.sortKey === k) state.sortAsc = !state.sortAsc;
     else { state.sortKey = k; state.sortAsc = false; }
     renderTable();
+  };
+  th.tabIndex = 0;
+  th.setAttribute('aria-label', `Sort by ${th.textContent.trim()}`);
+  th.addEventListener('click', sort);
+  th.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); sort(); }
   });
 });
 
@@ -665,6 +758,7 @@ function startDemo() {
   els.iface.textContent = 'wan (demo)';
   const services = ['https', 'http', 'dns', 'ssh', 'quic', 'mdns', 'ntp'];
   const cats = ['Web', 'Email', 'Discovery', 'Remote', 'Network'];
+  const demoDomains = ['youtube.com', 'discord.com', 'netflix.com', 'api.cloudflare.com', 'home-assistant.io', 'updates.microsoft.com', 'github.com'];
   const devs = ['iPhone', 'MacBook', 'Pixel 8', 'Smart TV', 'NAS', 'Printer'];
   let inB = 4e9, outB = 5e8, inP = 3e6, outP = 4e5, boot = Date.now() - 36e5 * 9;
   const demoRejects = [
@@ -685,13 +779,13 @@ function startDemo() {
       conns.push({
         id: 'demo' + i, src_ip: randIp(), src_port: randPort(), dst_ip: randIp(), dst_port: randPort(),
         protocol: svc === 'dns' || svc === 'ntp' || svc === 'mdns' ? 'udp' : 'tcp',
-        direction: dir, service: svc, category: cats[Math.floor(Math.random() * cats.length)],
+        direction: dir, service: svc, category: ['https', 'http', 'quic'].includes(svc) ? 'Web' : cats[Math.floor(Math.random() * cats.length)],
         bytes, packets: Math.floor(bytes / 800),
         incoming_bytes: dir === 'incoming' ? bytes : 0, outgoing_bytes: dir === 'outgoing' ? bytes : 0,
         first_seen: Date.now() / 1000 - 60, last_seen: Date.now() / 1000,
         country: ['US', 'DE', 'NL', 'GB', 'JP', '?'][Math.floor(Math.random() * 6)],
         asn: Math.random() < 0.5 ? ['Cloudflare, Inc.', 'Google LLC', 'Akamai Technologies'][Math.floor(Math.random() * 3)] : null,
-        domain: Math.random() < 0.5 ? ['github.com', 'cloudflare.com', 'google.com'][Math.floor(Math.random() * 3)] : null,
+        domain: Math.random() < 0.7 ? demoDomains[Math.floor(Math.random() * demoDomains.length)] : null,
       });
     }
     const svcAgg = services.map((name) => ({ name, bytes: Math.floor(Math.random() * 2e9), connections: Math.floor(Math.random() * 8) }));

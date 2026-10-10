@@ -101,18 +101,22 @@
       <!-- ══════════ CONNECTIONS ══════════ -->
       <section class="tab-panel hidden" id="tab-connections">
         <section class="page-banner connections-banner">
-          <div class="page-banner-copy"><div class="eyebrow"><span class="pulse-mark"></span> FLOW EXPLORER</div><h1>Connections</h1><p>Explore the conversations currently crossing your WAN.</p></div>
+          <div class="page-banner-copy"><div class="eyebrow"><span class="pulse-mark"></span> FLOW EXPLORER</div><h1>Connections</h1><p>Explore conversations and identify traffic types from signatures and network hints.</p></div>
           <div class="banner-readout"><span class="banner-orbit">⌁</span><span><b id="connectionBannerCount">— FLOWS</b><small>Live flow table</small></span></div>
         </section>
         <div class="toolbar">
-          <input type="search" id="search" placeholder="Search IP, domain, ASN, service…" autocomplete="off" />
-          <select id="catFilter"><option value="">All categories</option></select>
-          <select id="dirFilter">
+          <input type="search" id="search" placeholder="Search IP, domain, ASN, service…" aria-label="Search connections by IP, domain, ASN, or service" autocomplete="off" />
+          <select id="catFilter" aria-label="Filter connections by traffic category"><option value="">All categories</option></select>
+          <select id="dirFilter" aria-label="Filter by traffic direction">
             <option value="">Both directions</option>
             <option value="incoming">Incoming</option>
             <option value="outgoing">Outgoing</option>
           </select>
           <button class="btn" id="exportConnections" type="button">Export CSV</button>
+        </div>
+        <div class="category-explorer">
+          <div class="category-key"><span class="eyebrow"><span class="pulse-mark"></span> TRAFFIC MAP</span><span>Service catalog = matched <i>·</i> domain / port = inferred</span></div>
+          <div class="category-summary" id="categorySummary" aria-label="Filter by traffic category" role="group"></div>
         </div>
         <article class="panel table-panel">
           <header class="panel-head"><span>Connections</span><span class="sub" id="connSub">0 shown</span></header>
@@ -125,13 +129,14 @@
                   <th data-sort="country" class="geo-heading">Geo</th>
                   <th data-sort="protocol">Proto</th>
                   <th data-sort="service">Service</th>
+                  <th data-sort="category">Traffic type</th>
                   <th data-sort="direction">Dir</th>
                   <th data-sort="bytes" class="num">Bytes</th>
                   <th data-sort="packets" class="num">Packets</th>
                   <th data-sort="last_seen" class="num">Last seen</th>
                 </tr>
               </thead>
-              <tbody id="connBody"><tr><td colspan="9" class="empty">no traffic yet</td></tr></tbody>
+              <tbody id="connBody"><tr><td colspan="10" class="empty">no traffic yet</td></tr></tbody>
             </table>
           </div>
         </article>
@@ -140,7 +145,7 @@
       <!-- ══════════ SECURITY ══════════ -->
       <section class="tab-panel hidden security-panel" id="tab-security">
         <section class="page-banner security-hero">
-          <div class="security-copy">
+          <div class="page-banner-copy">
             <div class="eyebrow"><span class="pulse-mark"></span> PERIMETER WATCH</div>
             <h1>Inbound security</h1>
             <p>Firewall rejection events from the WAN, held in router memory.</p>
