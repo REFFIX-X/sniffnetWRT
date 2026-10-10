@@ -15,15 +15,15 @@ const state = {
   search: '',
   dirFilter: '',
   catFilter: '',
-  favOnly: false,
-  blOnly: false,
-  favorites: new Set(JSON.parse(localStorage.getItem('sniffnetwrt.favs') || '[]')),
   theme: localStorage.getItem('sniffnetwrt.theme') || 'dark',
   expanded: null,
   lastNotify: 0,
-  alertedBl: new Set(),
   rateInSm: null,   // EMA-smoothed incoming rate (anti-jitter)
   rateOutSm: null,  // EMA-smoothed outgoing rate
+  updateInterval: Number(localStorage.getItem('sniffnetwrt.updateInterval') || 1),
+  pendingSnapshot: null,
+  lastRenderedAt: 0,
+  renderTimer: null,
 };
 
 // ---------------------------------------------------------------------------
@@ -40,10 +40,10 @@ const els = {
   services: $('services'), chart: $('chart'),
   wanDev: $('wanDev'), wanIp: $('wanIp'), wanUp: $('wanUp'), wanRx: $('wanRx'), wanTx: $('wanTx'),
   search: $('search'), catFilter: $('catFilter'), dirFilter: $('dirFilter'),
-  favOnly: $('favOnly'), blOnly: $('blOnly'),
   connSub: $('connSub'), connBody: $('connBody'),
   devSub: $('devSub'), devBody: $('devBody'),
-  notifyEnabled: $('notifyEnabled'), notifyThreshold: $('notifyThreshold'), clearFavs: $('clearFavs'),
+  notifyEnabled: $('notifyEnabled'), notifyThreshold: $('notifyThreshold'),
+  updateInterval: $('updateInterval'),
 };
 
 // ---------------------------------------------------------------------------
@@ -74,10 +74,6 @@ function timeHms(sec) { return new Date(sec * 1000).toTimeString().slice(0, 8); 
 function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
-function flagEmoji(cc) {
-  if (!/^[A-Z]{2}$/.test(cc)) return '';
-  return String.fromCodePoint(...[...cc].map((c) => 0x1f1e6 + c.charCodeAt(0) - 65));
-}
 function ema(prev, next, alpha) {
   return prev == null ? next : prev * (1 - alpha) + next * alpha;
 }
@@ -97,11 +93,11 @@ const chart = {
   w: 0, h: 280,
   resize() {
     const dpr = window.devicePixelRatio || 1;
-    const { width } = els.chart.getBoundingClientRect();
+    const { width, height } = els.chart.getBoundingClientRect();
     els.chart.width = Math.max(1, Math.floor(width * dpr));
-    els.chart.height = Math.max(1, Math.floor(280 * dpr));
+    els.chart.height = Math.max(1, Math.floor(height * dpr));
     this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    this.w = width; this.h = 280;
+    this.w = width; this.h = height;
   },
   push(inRate, outRate) {
     state.series.push({ t: Date.now(), in: inRate, out: outRate });
@@ -165,13 +161,15 @@ window.addEventListener('resize', () => { chart.resize(); chart.draw(); });
 // Render
 // ---------------------------------------------------------------------------
 function render(snap) {
+  state.lastRenderedAt = Date.now();
   state.last = snap;
   els.iface.textContent = snap.interface || 'wan';
   setStatus(true);
 
   const t = snap.totals || {};
-  state.rateInSm = ema(state.rateInSm, t.incoming_rate || 0, 0.35);
-  state.rateOutSm = ema(state.rateOutSm, t.outgoing_rate || 0, 0.35);
+  const smoothing = 1 - Math.pow(1 - 0.35, state.updateInterval);
+  state.rateInSm = ema(state.rateInSm, t.incoming_rate || 0, smoothing);
+  state.rateOutSm = ema(state.rateOutSm, t.outgoing_rate || 0, smoothing);
   els.rateIn.textContent = fmtRate(state.rateInSm);
   els.rateInSub.textContent = `${fmtBytes(state.rateInSm)}/s`;
   els.rateOut.textContent = fmtRate(state.rateOutSm);
@@ -191,7 +189,19 @@ function render(snap) {
   buildCategoryFilter(snap.connections || []);
   renderTable();
 
+}
+
+function scheduleSnapshot(snap) {
   checkNotifications(snap);
+  state.pendingSnapshot = snap;
+  if (state.renderTimer) return;
+  const wait = Math.max(0, state.updateInterval * 1000 - (Date.now() - state.lastRenderedAt));
+  state.renderTimer = setTimeout(() => {
+    state.renderTimer = null;
+    const latest = state.pendingSnapshot;
+    state.pendingSnapshot = null;
+    if (latest) render(latest);
+  }, wait);
 }
 
 function renderHealth(h) {
@@ -257,8 +267,6 @@ function filteredConnections() {
   return conns.filter((c) => {
     if (state.dirFilter && c.direction !== state.dirFilter) return false;
     if (state.catFilter && c.category !== state.catFilter) return false;
-    if (state.favOnly && !state.favorites.has(c.id)) return false;
-    if (state.blOnly && !c.is_blacklisted) return false;
     if (q) {
       const hay = `${c.src_ip} ${c.dst_ip} ${c.service} ${c.category} ${c.protocol} ${c.domain || ''} ${c.asn || ''} ${c.country || ''}`.toLowerCase();
       if (!hay.includes(q)) return false;
@@ -280,12 +288,10 @@ function renderTable() {
 }
 
 function rowHtml(c) {
-  const fav = state.favorites.has(c.id);
-  const bl = c.is_blacklisted ? ' blacklisted' : '';
-  return `<tr data-id="${escapeHtml(c.id)}" class="${bl}">
-    <td class="w-star"><button class="star ${fav ? 'on' : ''}" data-star="${escapeHtml(c.id)}">★</button></td>
+  return `<tr data-id="${escapeHtml(c.id)}">
     <td>${fmtEndpoint(c.src_ip, c.src_port)}</td>
     <td>${fmtEndpoint(c.dst_ip, c.dst_port)}${hostLine(c)}</td>
+    <td class="geo-cell">${countryBadge(c.country)}</td>
     <td>${escapeHtml(c.protocol)}</td>
     <td><span class="badge ${escapeHtml(c.service)}">${escapeHtml(c.service)}</span></td>
     <td class="dir ${c.direction === 'incoming' ? 'in' : 'out'}">${c.direction === 'incoming' ? '▼' : '▲'}</td>
@@ -297,23 +303,26 @@ function rowHtml(c) {
 
 function detailHtml(c) {
   const rows = [];
-  if (c.domain) rows.push(`<span><b>Domain</b> ${flagEmoji(c.country || '')} ${escapeHtml(c.domain)}</span>`);
+  if (c.domain) rows.push(`<span><b>Domain</b> ${escapeHtml(c.domain)}</span>`);
   if (c.country) rows.push(`<span><b>Country</b> ${escapeHtml(c.country)}</span>`);
   if (c.asn) rows.push(`<span><b>ASN</b> ${escapeHtml(c.asn)}</span>`);
   rows.push(`<span><b>Category</b> ${escapeHtml(c.category || '—')}</span>`);
   rows.push(`<span><b>First seen</b> ${timeHms(c.first_seen)}</span>`);
   rows.push(`<span><b>In/Out</b> ${fmtBytes(c.incoming_bytes)} / ${fmtBytes(c.outgoing_bytes)}</span>`);
-  if (c.is_blacklisted) rows.push(`<span class="out"><b>🚫 Blacklisted</b></span>`);
-  return `<tr class="detail-row hidden" data-detail="${escapeHtml(c.id)}"><td></td><td colspan="8"><div class="detail-grid">${rows.join('')}</div></td></tr>`;
+  return `<tr class="detail-row hidden" data-detail="${escapeHtml(c.id)}"><td colspan="9"><div class="detail-grid">${rows.join('')}</div></td></tr>`;
 }
 
 function fmtEndpoint(ip, port) { return port ? `${ip}:${port}` : ip; }
 function hostLine(c) {
   const parts = [];
   if (c.domain && c.domain !== c.dst_ip && c.domain !== c.src_ip) parts.push(escapeHtml(c.domain));
-  if (c.country && c.country !== '?') parts.push(`${flagEmoji(c.country)} ${escapeHtml(c.country)}`);
   if (c.asn) parts.push(escapeHtml(c.asn));
   return parts.length ? `<div class="host">${parts.join(' · ')}</div>` : '';
+}
+function countryBadge(country) {
+  if (!country || !/^[A-Z]{2}$/.test(country)) return '<span class="geo-unknown" title="GeoIP data unavailable">—</span>';
+  const code = country.toLowerCase();
+  return `<span class="country-badge" title="${escapeHtml(country)}"><img class="country-flag" src="/flags/${code}.svg" alt="" loading="lazy" decoding="async"><span>${escapeHtml(country)}</span></span>`;
 }
 function cmpConn(a, b) {
   const k = state.sortKey;
@@ -323,10 +332,8 @@ function cmpConn(a, b) {
   return state.sortAsc ? r : -r;
 }
 
-// table interactions (event delegation)
+// Expand connection details on row click.
 els.connBody.addEventListener('click', (e) => {
-  const star = e.target.closest('[data-star]');
-  if (star) { e.stopPropagation(); toggleFavorite(star.dataset.star); return; }
   const row = e.target.closest('tr[data-id]');
   if (row) {
     const detail = row.nextElementSibling;
@@ -338,21 +345,12 @@ els.connBody.addEventListener('click', (e) => {
   }
 });
 
-function toggleFavorite(id) {
-  if (state.favorites.has(id)) state.favorites.delete(id);
-  else state.favorites.add(id);
-  localStorage.setItem('sniffnetwrt.favs', JSON.stringify([...state.favorites]));
-  renderTable();
-}
-
 // ---------------------------------------------------------------------------
 // Filters / sorting wiring
 // ---------------------------------------------------------------------------
 els.search.addEventListener('input', (e) => { state.search = e.target.value; renderTable(); });
 els.dirFilter.addEventListener('change', (e) => { state.dirFilter = e.target.value; renderTable(); });
 els.catFilter.addEventListener('change', (e) => { state.catFilter = e.target.value; renderTable(); });
-els.favOnly.addEventListener('change', (e) => { state.favOnly = e.target.checked; renderTable(); });
-els.blOnly.addEventListener('change', (e) => { state.blOnly = e.target.checked; renderTable(); });
 
 document.querySelectorAll('#tab-connections th[data-sort]').forEach((th) => {
   th.addEventListener('click', () => {
@@ -406,8 +404,16 @@ function notify(title, body) {
 els.notifyEnabled.addEventListener('change', () => {
   if (els.notifyEnabled.checked && Notification.permission === 'default') Notification.requestPermission();
 });
-els.clearFavs.addEventListener('click', () => { state.favorites.clear(); localStorage.removeItem('sniffnetwrt.favs'); renderTable(); });
-
+const savedUpdateInterval = [1, 2, 5, 10].includes(state.updateInterval) ? state.updateInterval : 1;
+state.updateInterval = savedUpdateInterval;
+els.updateInterval.value = String(savedUpdateInterval);
+els.updateInterval.addEventListener('change', () => {
+  state.updateInterval = Number(els.updateInterval.value) || 1;
+  localStorage.setItem('sniffnetwrt.updateInterval', String(state.updateInterval));
+  if (state.renderTimer) clearTimeout(state.renderTimer);
+  state.renderTimer = null;
+  if (state.pendingSnapshot) scheduleSnapshot(state.pendingSnapshot);
+});
 function checkNotifications(snap) {
   if (!els.notifyEnabled.checked) return;
   const mbps = parseFloat(els.notifyThreshold.value);
@@ -419,13 +425,6 @@ function checkNotifications(snap) {
   if (mbps > 0 && total > thrBytes && now - state.lastNotify > 30000) {
     state.lastNotify = now;
     notify('sniffnetWRT', `Throughput ${fmtRate(total)} exceeds ${mbps} Mbps`);
-  }
-  // blacklisted (only when a new blacklisted IP appears)
-  for (const c of snap.connections || []) {
-    if (c.is_blacklisted && !state.alertedBl.has(c.src_ip)) {
-      state.alertedBl.add(c.src_ip);
-      notify('sniffnetWRT', `⚠️ Traffic from blacklisted IP ${c.src_ip}`);
-    }
   }
 }
 
@@ -445,7 +444,13 @@ function connect() {
   let gotData = false;
   const failTimer = setTimeout(() => { if (!gotData) { ws.close(); startDemo(); } }, 2500);
   ws.onopen = () => setStatus(false);
-  ws.onmessage = (ev) => { gotData = true; clearTimeout(failTimer); try { render(JSON.parse(ev.data)); } catch (e) {} };
+  ws.onmessage = (ev) => {
+    gotData = true; clearTimeout(failTimer);
+    try {
+      const snap = JSON.parse(ev.data);
+      scheduleSnapshot(snap);
+    } catch (e) {}
+  };
   ws.onerror = () => {};
   ws.onclose = () => { clearTimeout(failTimer); if (!gotData) startDemo(); else setStatus(false); };
 }
@@ -466,7 +471,6 @@ function startDemo() {
       const svc = services[Math.floor(Math.random() * services.length)];
       const bytes = Math.floor(Math.random() * 800e6);
       const dir = Math.random() < 0.6 ? 'incoming' : 'outgoing';
-      const bl = Math.random() < 0.06;
       conns.push({
         id: 'demo' + i, src_ip: randIp(), src_port: randPort(), dst_ip: randIp(), dst_port: randPort(),
         protocol: svc === 'dns' || svc === 'ntp' || svc === 'mdns' ? 'udp' : 'tcp',
@@ -477,11 +481,10 @@ function startDemo() {
         country: ['US', 'DE', 'NL', 'GB', 'JP', '?'][Math.floor(Math.random() * 6)],
         asn: Math.random() < 0.5 ? ['Cloudflare, Inc.', 'Google LLC', 'Akamai Technologies'][Math.floor(Math.random() * 3)] : null,
         domain: Math.random() < 0.5 ? ['github.com', 'cloudflare.com', 'google.com'][Math.floor(Math.random() * 3)] : null,
-        is_blacklisted: bl,
       });
     }
     const svcAgg = services.map((name) => ({ name, bytes: Math.floor(Math.random() * 2e9), connections: Math.floor(Math.random() * 8) }));
-    render({
+    scheduleSnapshot({
       type: 'tick', interface: 'wan', timestamp: Date.now() / 1000,
       totals: { incoming_bytes: inB, outgoing_bytes: outB, incoming_packets: inP, outgoing_packets: outP, incoming_rate: inRate, outgoing_rate: outRate },
       connections: conns, services: svcAgg,

@@ -12,7 +12,8 @@ typed channels:
 
 - `vendor/sniffnet-src/networking/capture.rs` exposes
   `spawn_capture_thread(cap_id, capture_source, capture_context, mmdb_readers,
-  ip_blacklist, filters, tx, freeze_rxs)` — it spawns the parse thread.
+  ip_blacklist, filters, tx, freeze_rxs)` — it spawns the parse thread. The daemon
+  passes an empty default blacklist; the UI and daemon no longer expose blacklist features.
 - The parse thread emits `BackendTrafficMessage::TickRun(usize, InfoTraffic,
   Vec<HostMessage>, bool)` once per second via an `async_channel::Sender`.
 - `vendor/sniffnet-src/networking/types/info_traffic.rs` is the aggregation state
@@ -108,7 +109,7 @@ In `daemon/src/main.rs`, replace `capture::run(...)` with:
 
 1. Build `CaptureSource::Device(...)` from the detected WAN device.
 2. `CaptureContext::new(&source, None, &filters)`.
-3. `MmdbReaders` (loaded once), `IpBlacklist`, `Filters`.
+3. `MmdbReaders` (loaded once), `IpBlacklist::default()`, `Filters`.
 4. `let (tx, rx) = async_channel::unbounded();`
 5. `spawn_capture_thread(cap_id, source, ctx, mmdb, blacklist, filters, tx.clone(), freeze_rxs);`
 6. A bridge task: `while let Ok(msg) = rx.recv().await { if let TickRun(_, info, hosts, _) = msg { let snap = snapshot_from_tick(...); tx_broadcast.send(snap); } }`

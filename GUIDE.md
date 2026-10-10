@@ -12,19 +12,22 @@ You don't need Rust or a Linux machine — GitHub Actions builds it for you.
 
 1. Push to GitHub (the workflow in `.github/workflows/build.yml` runs automatically).
 2. Open **Actions → the finished (green) run → Artifacts → `sniffnetwrt-aarch64`**.
-3. Download + extract it. You'll get `sniffnetwrt-aarch64.tar.gz` containing:
+3. Download it. The archive contains:
    - `sniffnetwrt` — the binary
    - `web/` — the dashboard
    - `sniffnetwrt.init` + `sniffnetwrt.config` — service files
+   - `install.sh` — the installer
 
 ## 2. Install on the router
 
 ### Option A — one command (recommended)
 
-Copy `scripts/install.sh` + the tarball to the router, then run it there:
+Extract the installer from the archive, copy it with the archive to the router,
+then run it there:
 
 ```sh
-scp scripts/install.sh sniffnetwrt-aarch64.tar.gz root@192.168.1.1:/tmp/
+tar xzf sniffnetwrt-aarch64.tar.gz install.sh
+scp install.sh sniffnetwrt-aarch64.tar.gz root@192.168.1.1:/tmp/
 ssh root@192.168.1.1 "sh /tmp/install.sh /tmp/sniffnetwrt-aarch64.tar.gz"
 ```
 
@@ -64,10 +67,9 @@ auto-detected via `ubus`; on the Flint 4 it's `eth2`.
 | `lan_device` | LAN bridge for per-device usage (default `br-lan`) |
 | `port` | Web UI port (default 9999) |
 | `bind` | Listen address — **set to your LAN IP** (installer does this) |
-| `token` | optional `?token=` auth on the WebSocket |
+| `token` | optional `?token=` auth on the WebSocket and PCAP download |
 | `bpf` | optional BPF filter (e.g. `tcp port 443`) |
 | `mmdb_dir` | dir with `GeoLite2-{Country,ASN}.mmdb` |
-| `blacklist` | IP/CIDR blacklist file (one per line) |
 | `webhook` | remote-notification webhook URL |
 | `notify_threshold` | alert above this many B/s |
 | `pcap_out` | path for a live PCAP export (download at `/pcap`) |
@@ -82,13 +84,13 @@ uci commit sniffnetwrt && /etc/init.d/sniffnetwrt restart
 
 - **Overview** — health (load/RAM/temp/uptime), WAN status, live throughput chart,
   totals, service breakdown.
-- **Connections** — search + filter (direction / service category / blacklist /
-  favorites), star favorites, expandable per-connection detail, blacklist rows in red.
+- **Connections** — search + filter by direction or service category, GeoIP country
+  flags, and expandable per-connection detail.
 - **Devices** — LAN clients with live per-device **down/up** (from the `br-lan` capture).
 - **Settings** — themes (Footstrap default), browser alerts + rate threshold.
 
-Backend extras: IP blacklist (red rows + webhook alert), remote webhook notifications
-(blacklisted traffic / rate thresholds), live PCAP export, reverse-DNS + GeoLite2
+Backend extras: remote webhook notifications for rate thresholds, live PCAP export,
+reverse-DNS + GeoLite2
 country/ASN, and Sniffnet's 6000+ service signatures.
 
 ## 6. Geo / ASN (optional)
@@ -111,7 +113,7 @@ logread | grep sniffnetwrt          # logs
 
 # test the endpoints
 curl -s http://192.168.1.1:9999/healthz     # -> ok
-curl -s http://192.168.1.1:9999/pcap -o x.pcap   # PCAP export (if enabled)
+curl -s 'http://192.168.1.1:9999/pcap?token=YOUR_TOKEN' -o x.pcap   # include token if configured
 
 # run in the foreground to see errors
 /etc/init.d/sniffnetwrt stop

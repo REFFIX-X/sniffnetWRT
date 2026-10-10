@@ -15,7 +15,7 @@ pub struct Config {
     #[arg(long, env = "SNIFFNETWRT_LAN_DEVICE")]
     pub lan_device: Option<String>,
 
-    /// Path to write a live PCAP export (optional). Download it at `/pcap`.
+    /// Optional path to write a live PCAP export (disabled by default; download at `/pcap`).
     #[arg(long, env = "SNIFFNETWRT_PCAP_OUT")]
     pub pcap_out: Option<String>,
 
@@ -34,10 +34,6 @@ pub struct Config {
     /// Directory containing GeoLite2-{Country,ASN}.mmdb (optional).
     #[arg(long, env = "SNIFFNETWRT_MMDB_DIR", default_value = "db")]
     pub mmdb_dir: String,
-
-    /// Optional IP/CIDR blacklist file (one per line).
-    #[arg(long, env = "SNIFFNETWRT_BLACKLIST")]
-    pub blacklist: Option<String>,
 
     /// Optional webhook URL for remote notifications.
     #[arg(long, env = "SNIFFNETWRT_WEBHOOK")]

@@ -62,8 +62,6 @@ pub struct Connection {
     pub asn: Option<String>,
     /// Domain (from reverse-DNS), if available.
     pub domain: Option<String>,
-    /// Whether the remote address is on an imported IP blacklist.
-    pub is_blacklisted: bool,
 }
 
 /// Aggregated bytes per upper-layer service.

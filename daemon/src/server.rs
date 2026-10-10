@@ -47,7 +47,15 @@ async fn ws_handler(
     ws.on_upgrade(move |socket| ws::handle(socket, state))
 }
 
-async fn pcap_handler(State(state): State<AppState>) -> Response {
+async fn pcap_handler(
+    Query(params): Query<HashMap<String, String>>,
+    State(state): State<AppState>,
+) -> Response {
+    if let Some(token) = &state.token {
+        if params.get("token").map(String::as_str) != Some(token.as_str()) {
+            return (StatusCode::UNAUTHORIZED, "invalid token").into_response();
+        }
+    }
     let Some(path) = state.pcap_path.clone() else {
         return (StatusCode::NOT_FOUND, "PCAP export is disabled (set --pcap-out)").into_response();
     };

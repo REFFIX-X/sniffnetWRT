@@ -18,9 +18,8 @@ use sniffnetwrt_engine::networking::types::capture_context::{CaptureContext, Cap
 use sniffnetwrt_engine::networking::types::data_representation::DataRepr;
 use sniffnetwrt_engine::networking::types::host::Host;
 use sniffnetwrt_engine::networking::types::info_traffic::InfoTraffic;
-use sniffnetwrt_engine::networking::types::ip_blacklist::IpBlacklist;
 use sniffnetwrt_engine::networking::types::traffic_direction::TrafficDirection;
-use tokio::sync::broadcast;
+use tokio::sync::{broadcast, RwLock};
 
 use crate::model::{Connection, ServiceAgg, Snapshot, Totals};
 use crate::{sysinfo, webhook};
@@ -34,11 +33,11 @@ pub async fn run(
     lan_device: Option<String>,
     bpf: Option<String>,
     mmdb_dir: String,
-    blacklist_path: Option<String>,
     webhook_url: Option<String>,
     notify_threshold: Option<f64>,
     pcap_out: Option<String>,
     tx: broadcast::Sender<Snapshot>,
+    last: Arc<RwLock<Option<String>>>,
 ) -> Result<(), String> {
     let mut filters = Filters::default();
     if let Some(bpf) = bpf {
@@ -63,12 +62,6 @@ pub async fn run(
         asn: Arc::new(MmdbReader::from(&asn_path, &[])),
     };
 
-    // Load the IP blacklist (if configured).
-    let ip_blacklist = match &blacklist_path {
-        Some(p) => IpBlacklist::from_file(p.clone()).await,
-        None => IpBlacklist::default(),
-    };
-
     // WAN backend channel + freeze control.
     let (backend_tx, backend_rx) = async_channel::unbounded();
     let (freeze_tx, _) = tokio::sync::broadcast::channel(1_048_575);
@@ -80,7 +73,7 @@ pub async fn run(
         source,
         context,
         mmdb_readers.clone(),
-        ip_blacklist,
+        Default::default(),
         filters,
         backend_tx,
         (freeze_rx, freeze_rx2),
@@ -102,7 +95,7 @@ pub async fn run(
                 lan_source,
                 lan_context,
                 mmdb_readers,
-                IpBlacklist::default(),
+                Default::default(),
                 lan_filters,
                 lan_tx,
                 (lf1, lf2),
@@ -157,6 +150,9 @@ pub async fn run(
 
             fire_alerts(&snap, webhook_url.as_deref(), notify_threshold, &mut last_alert);
 
+            if let Ok(json) = serde_json::to_string(&snap) {
+                *last.write().await = Some(json);
+            }
             let _ = tx.send(snap);
         }
     }
@@ -199,19 +195,6 @@ fn fire_alerts(
         }
     }
 
-    // Blacklisted connections.
-    for c in &snap.connections {
-        if c.is_blacklisted && cooldown_ok(last_alert, &c.src_ip) {
-            let payload = webhook::blacklist_payload(
-                &c.src_ip,
-                c.country.as_deref(),
-                c.domain.as_deref(),
-                c.asn.as_deref(),
-                &format!("{} B", c.bytes),
-            );
-            spawn_webhook(url, payload);
-        }
-    }
 }
 
 fn cooldown_ok(last_alert: &mut HashMap<String, Instant>, key: &str) -> bool {
@@ -288,7 +271,6 @@ fn build_snapshot(
                 country: host.map(|h| h.country.to_string()),
                 asn: host.map(|h| h.asn.name.clone()),
                 domain: host.map(|h| h.domain.clone()),
-                is_blacklisted: value.is_blacklisted,
             }
         })
         .collect();

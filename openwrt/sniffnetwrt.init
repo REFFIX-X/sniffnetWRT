@@ -10,7 +10,7 @@ PROG=/usr/bin/sniffnetwrt
 WEB_DIR=/usr/share/sniffnetwrt
 
 start_service() {
-	local device lan_device port bind token bpf interval mmdb_dir blacklist webhook threshold pcap_out
+	local device lan_device port bind token bpf interval mmdb_dir webhook threshold pcap_out
 	config_load 'sniffnetwrt'
 	config_get device 'wan' device
 	config_get lan_device 'wan' lan_device 'br-lan'
@@ -20,7 +20,6 @@ start_service() {
 	config_get bpf 'wan' bpf
 	config_get interval 'wan' interval_ms '1000'
 	config_get mmdb_dir 'wan' mmdb_dir '/usr/share/sniffnetwrt'
-	config_get blacklist 'wan' blacklist
 	config_get webhook 'wan' webhook
 	config_get threshold 'wan' notify_threshold
 	config_get pcap_out 'wan' pcap_out
@@ -38,7 +37,6 @@ start_service() {
 	[ -n "$lan_device" ] && procd_append_param command --lan-device "$lan_device"
 	[ -n "$token" ]     && procd_append_param command --token "$token"
 	[ -n "$bpf" ]       && procd_append_param command --bpf "$bpf"
-	[ -n "$blacklist" ] && procd_append_param command --blacklist "$blacklist"
 	[ -n "$webhook" ]   && procd_append_param command --webhook "$webhook"
 	[ -n "$threshold" ] && procd_append_param command --notify-threshold "$threshold"
 	[ -n "$pcap_out" ]  && procd_append_param command --pcap-out "$pcap_out"

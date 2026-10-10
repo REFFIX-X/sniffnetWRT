@@ -90,7 +90,7 @@ with a WebSocket carrying the same `TickRun` snapshots as JSON.**
 | Geo location / ASN / reverse DNS | Keep (GeoLite2 + `dns_lookup`) |
 | 6000+ service identification | Keep |
 | **Which programs generate bandwidth** | **Drop** → replace with LAN client/MAC view |
-| Favorites / blacklists / notifications | Keep (browser Notification/WebAudio for sound) |
+| Notifications | Keep (browser Notification/WebAudio for sound) |
 | Custom themes / thumbnail mode | Keep (CSS themes; compact view) |
 
 ## 8. WAN capture on Flint 4
@@ -118,7 +118,7 @@ with a WebSocket carrying the same `TickRun` snapshots as JSON.**
 2. **Daemon (2–3 d):** `axum` + `tokio-tungstenite` on :9999, WAN auto-detect, UCI config.
 3. **Frontend (3–5 d):** HTML/CSS/JS pages matching the screenshot (cards, live charts, table).
 4. **Packaging (1–2 d):** procd init + apk package, MMDB download, auth.
-5. **Polish:** notifications, favorites, blacklist, thumbnail view.
+5. **Polish:** notifications, themes, compact view.
 
 ## 11. Risks
 

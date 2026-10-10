@@ -19,21 +19,6 @@ pub fn notify(url: &str, payload: serde_json::Value) -> Result<(), String> {
     }
 }
 
-/// Build the standard "blacklisted IP" payload (matches Sniffnet's schema).
-pub fn blacklist_payload(ip: &str, country: Option<&str>, domain: Option<&str>, asn: Option<&str>, data: &str) -> serde_json::Value {
-    json!({
-        "info": "New data exchanged from a blacklisted IP",
-        "timestamp": now_string(),
-        "ip": ip,
-        "host": {
-            "country": country.unwrap_or(""),
-            "domain": domain.unwrap_or(""),
-            "asn": asn.unwrap_or(""),
-        },
-        "data": data,
-    })
-}
-
 /// Build the "data threshold exceeded" payload.
 pub fn threshold_payload(threshold: &str, data: &str) -> serde_json::Value {
     json!({

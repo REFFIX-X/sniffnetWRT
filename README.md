@@ -74,8 +74,21 @@ git push -u origin main
 ```
 
 Then: **repo → Actions → the run → Artifacts → download `sniffnetwrt-aarch64`**.
-It bundles `sniffnetwrt`, `web/`, `sniffnetwrt.init`, and `sniffnetwrt.config` —
-everything you `scp` to the router in the deploy steps below.
+It bundles `sniffnetwrt`, `web/`, the init/config files, and `install.sh` for a
+self-contained install.
+
+To publish a GitHub Release with that tarball attached, push a version tag after
+the commit has built successfully:
+
+```sh
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+The tag workflow builds the same OpenWrt package and publishes
+`sniffnetwrt-aarch64.tar.gz` on the release. The installer can download the
+latest release directly:
+`https://github.com/REFFIX-X/sniffnetWRT/releases/latest/download/sniffnetwrt-aarch64.tar.gz`.
 
 > First run may need a tiny tweak (e.g. the `SDK_URL` in `build.yml`). The
 > workflow log shows the exact failure; the fix is usually editing that one URL.
@@ -119,16 +132,24 @@ Then browse to `http://192.168.1.1:9999`.
 | Flag | Env | Default | Meaning |
 |---|---|---|---|
 | `--interface` | `SNIFFNETWRT_INTERFACE` | auto-detect | WAN capture device |
+| `--lan-device` | `SNIFFNETWRT_LAN_DEVICE` | auto-detect | LAN bridge for per-device bandwidth; empty disables it |
 | `--bind` | `SNIFFNETWRT_BIND` | `0.0.0.0` | listen address (use LAN IP) |
 | `--port` | `SNIFFNETWRT_PORT` | `9999` | web/WS port |
 | `--web-dir` | `SNIFFNETWRT_WEB_DIR` | `web` | static assets directory |
 | `--mmdb-dir` | `SNIFFNETWRT_MMDB_DIR` | `db` | dir with GeoLite2-{Country,ASN}.mmdb |
 | `--token` | `SNIFFNETWRT_TOKEN` | — | required `?token=` on `/ws` |
 | `--bpf` | `SNIFFNETWRT_BPF` | — | optional BPF filter |
-| `--blacklist` | `SNIFFNETWRT_BLACKLIST` | — | IP/CIDR blacklist file (one per line) |
 | `--webhook` | `SNIFFNETWRT_WEBHOOK` | — | remote-notification webhook URL |
 | `--notify-threshold` | `SNIFFNETWRT_NOTIFY_THRESHOLD` | — | alert above this many B/s |
+| `--pcap-out` | `SNIFFNETWRT_PCAP_OUT` | — | write captured packets to a PCAP file served at `/pcap` |
 | `--interval-ms` | `SNIFFNETWRT_INTERVAL_MS` | `1000` | snapshot interval |
+
+Traffic statistics stay in memory by default. PCAP recording is disabled unless
+`--pcap-out` (or the UCI `pcap_out` option) is explicitly set; avoid pointing it
+at internal flash for continuous captures.
+
+When `--token` is configured, both `/ws?token=...` and `/pcap?token=...` require
+that token.
 
 ## Status
 
@@ -139,11 +160,10 @@ into a full router traffic monitor:
 - header parsing via `sniffnet-packet-parser`,
 - the 6000+ L7 **service signatures** (compiled from `engine/resources/services/`),
 - **reverse-DNS** domains + **GeoLite2 country/ASN** enrichment (`--mmdb-dir db`),
-- **IP blacklists** → red rows + webhook alerts (`--blacklist`),
-- **remote webhook notifications** on blacklisted traffic / rate thresholds (`--webhook`),
+- **remote webhook notifications** on rate thresholds (`--webhook`),
 - router **health** (load/RAM/temp/uptime), **WAN status**, and **LAN clients**,
 - dashboard tabs (Overview / Connections / Devices / Settings) with **search,
-  filters, favorites, themes, service categories, and per-connection detail**.
+  filters, themes, service categories, GeoIP flags, and per-connection detail**.
 
 Still desktop-only (dropped): `iced` GUI, IPFIX, program/process identification,
 sound, thumbnail mode. Future: per-device *bandwidth* (br-lan capture / nlbwmon),

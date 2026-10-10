@@ -6,7 +6,7 @@
 #   ./install.sh https://github.com/REFFIX-X/sniffnetWRT/releases/latest/download/sniffnetwrt-aarch64.tar.gz
 #
 # The tarball must contain: sniffnetwrt (binary), web/, sniffnetwrt.init,
-# sniffnetwrt.config — exactly what the GitHub Actions build produces.
+# sniffnetwrt.config, and install.sh — exactly what the GitHub Actions build produces.
 
 set -eu
 
@@ -79,6 +79,6 @@ fi
 echo
 echo "✓ sniffnetWRT installed"
 echo "  Dashboard:  http://<router-lan-ip>:9999"
-echo "  Configure:  uci show sniffnetwrt   (token, blacklist, webhook, pcap, ...)"
+echo "  Configure:  uci show sniffnetwrt   (token, webhook, pcap, ...)"
 echo "  Restart:    /etc/init.d/sniffnetwrt restart"
 echo "  Logs:       logread | grep sniffnetwrt"

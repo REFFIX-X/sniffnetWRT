@@ -75,6 +75,8 @@ pub fn devices() -> Vec<Device> {
                         ip,
                         hostname: String::new(),
                         online: true,
+                        incoming_bytes: 0,
+                        outgoing_bytes: 0,
                     });
                 }
             }
@@ -94,6 +96,8 @@ pub fn devices() -> Vec<Device> {
                     ip,
                     hostname: hostname.clone(),
                     online: false,
+                    incoming_bytes: 0,
+                    outgoing_bytes: 0,
                 });
                 if !hostname.is_empty() && hostname != "*" {
                     e.hostname = hostname;

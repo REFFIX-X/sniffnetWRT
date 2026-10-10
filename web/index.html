@@ -28,7 +28,7 @@
 
     <main>
       <!-- ══════════ OVERVIEW ══════════ -->
-      <section class="tab-panel" id="tab-overview">
+      <section class="tab-panel overview-grid" id="tab-overview">
         <section class="cards" id="healthCards">
           <article class="card"><header class="card-head">Load</header><div class="card-value" id="hLoad">—</div><div class="card-sub" id="hLoadSub">1 / 5 / 15 min</div></article>
           <article class="card"><header class="card-head">Memory</header><div class="card-value" id="hMem">—</div><div class="card-sub" id="hMemSub">used / total</div></article>
@@ -102,8 +102,6 @@
             <option value="incoming">Incoming</option>
             <option value="outgoing">Outgoing</option>
           </select>
-          <label class="chip"><input type="checkbox" id="favOnly" /> ★ Favorites</label>
-          <label class="chip"><input type="checkbox" id="blOnly" /> 🚫 Blacklisted</label>
         </div>
         <article class="panel table-panel">
           <header class="panel-head"><span>Connections</span><span class="sub" id="connSub">0 shown</span></header>
@@ -111,9 +109,9 @@
             <table>
               <thead>
                 <tr>
-                  <th class="w-star"></th>
                   <th data-sort="src_ip">Source</th>
                   <th data-sort="dst_ip">Destination</th>
+                  <th data-sort="country" class="geo-heading">Geo</th>
                   <th data-sort="protocol">Proto</th>
                   <th data-sort="service">Service</th>
                   <th data-sort="direction">Dir</th>
@@ -147,6 +145,21 @@
       <!-- ══════════ SETTINGS ══════════ -->
       <section class="tab-panel hidden" id="tab-settings">
         <article class="panel">
+          <header class="panel-head"><span>Dashboard updates</span></header>
+          <div class="setting-row">
+            <label class="setting-label" for="updateInterval">Refresh interval:
+              <select id="updateInterval">
+                <option value="1">Every 1 second</option>
+                <option value="2">Every 2 seconds</option>
+                <option value="5">Every 5 seconds</option>
+                <option value="10">Every 10 seconds</option>
+              </select>
+            </label>
+            <span class="hint">Controls how often this page redraws. Traffic capture and alerts continue updating every second.</span>
+          </div>
+        </article>
+
+        <article class="panel">
           <header class="panel-head"><span>Theme</span></header>
           <div class="theme-row" id="themes">
             <button class="theme-btn" data-theme-choice="dark"><span class="swatch" style="--a:#1c2128;--b:#569df5;--c:#5aad5d"></span>Footstrap <em class="muted">(default)</em></button>
@@ -165,13 +178,6 @@
           </div>
         </article>
 
-        <article class="panel">
-          <header class="panel-head"><span>Favorites</span></header>
-          <div class="setting-row">
-            <button class="btn" id="clearFavs">Clear favorites</button>
-            <span class="hint">Starred connections are kept in this browser only.</span>
-          </div>
-        </article>
       </section>
     </main>
 

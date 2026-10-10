@@ -3,7 +3,11 @@ name: build
 on:
   push:
     branches: [main, master]
+    tags: ['v*']
   workflow_dispatch: {}
+
+permissions:
+  contents: read
 
 env:
   OPENWRT_VERSION: "25.12.0"
@@ -23,11 +27,22 @@ jobs:
         with:
           targets: aarch64-unknown-linux-musl
 
+      - name: Check frontend JavaScript syntax
+        run: node --check web/app.js
+
+      - name: Check installer shell syntax
+        run: |
+          sh -n scripts/install.sh
+          sh -n openwrt/cross-build.sh
+
       - name: Install host build dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y build-essential gawk python3 wget unzip file rsync \
-                                  libncurses-dev zlib1g-dev pkg-config zstd cmake ninja-build flex bison
+                                  libncurses-dev zlib1g-dev libpcap-dev pkg-config zstd cmake ninja-build flex bison
+
+      - name: Run Rust tests
+        run: cargo test --manifest-path daemon/Cargo.toml
 
       - name: Download and extract the OpenWrt SDK
         run: |
@@ -65,10 +80,33 @@ jobs:
           cp -r web dist/
           cp openwrt/sniffnetwrt.init dist/
           cp openwrt/sniffnetwrt.config dist/
-          tar -czf sniffnetwrt-aarch64.tar.gz -C dist .
+          cp scripts/install.sh dist/
+          tar -czf sniffnetwrt-aarch64.tar.gz -C dist sniffnetwrt web sniffnetwrt.init sniffnetwrt.config install.sh
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: sniffnetwrt-aarch64
           path: sniffnetwrt-aarch64.tar.gz
+          if-no-files-found: error
+          retention-days: 14
+
+  release:
+    name: publish GitHub Release
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download the release tarball
+        uses: actions/download-artifact@v4
+        with:
+          name: sniffnetwrt-aarch64
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: sniffnetWRT ${{ github.ref_name }}
+          generate_release_notes: true
+          files: sniffnetwrt-aarch64.tar.gz
