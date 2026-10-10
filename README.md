@@ -12,33 +12,14 @@ with a web frontend.
 
 ```
 sniffnetWRT/
-├── PLAN.md                 # the full porting plan
-├── PORTING.md              # how to wire the vendored Sniffnet engine into the daemon
-├── daemon/                 # Rust daemon (capture + HTTP/WebSocket server)
-│   ├── Cargo.toml
-│   └── src/
-│       ├── main.rs         # entry point
-│       ├── config.rs       # CLI/env config
-│       ├── wan.rs          # WAN interface auto-detection (ubus + UCI)
-│       ├── bridge.rs       # engine → WebSocket bridge (+ health/WAN/devices)
-│       ├── sysinfo.rs      # CPU/RAM/temp/uptime + WAN + LAN-client discovery
-│       ├── webhook.rs      # remote webhook notifications
-│       ├── model.rs        # JSON snapshot schema (mirrors Sniffnet's InfoTraffic)
-│       ├── server.rs       # axum router (static assets + /ws + /healthz)
-│       ├── security.rs     # optional fw4 rejection stream (bounded RAM history)
-│       └── ws.rs           # WebSocket session relay
-├── web/                    # frontend (vanilla HTML/CSS/JS, no build step)
-│   ├── index.html
-│   ├── style.css
-│   └── app.js              # dashboard + live charts + demo fallback
-├── openwrt/                # packaging
-│   ├── sniffnetwrt.init    # procd init script
-│   ├── sniffnetwrt.config  # UCI default config
-│   ├── cross-build.sh      # cross-compile with the OpenWrt SDK
-│   └── Makefile            # OpenWrt package template
-└── vendor/                 # vendored upstream Sniffnet source (reference fork)
-    ├── sniffnet-src/       #   upstream src/
-    └── sniffnet-lib/       #   upstream lib/sniffnet-packet-parser
+├── daemon/                 # Rust capture daemon and HTTP/WebSocket server
+├── engine/                 # headless Sniffnet engine
+├── web/                    # vanilla HTML/CSS/JS dashboard
+├── openwrt/                # procd service, UCI config, SDK cross-build
+├── scripts/                # installer and optional GeoIP database fetch
+├── .github/workflows/      # CI build and tagged release publishing
+├── README.md               # install, configuration, and feature reference
+└── GUIDE.md                # concise router install and operation guide
 ```
 
 ## Quick start (local dev, desktop Linux/macOS)
@@ -80,7 +61,7 @@ sh /tmp/sniffnetwrt-install.sh
 The installer downloads the latest release, installs `libpcap`, puts the app
 files in place, and enables and starts the service. It preserves an existing
 `/etc/config/sniffnetwrt`; on a fresh install, it binds the dashboard to the
-router's LAN IP when available. On an interactive install it asks whether to
+router's LAN IP when available, and warns if it cannot detect that address. On an interactive install it asks whether to
 enable rate-limited WAN firewall rejection logging; the default is **No**.
 Unattended installs never change firewall settings. To opt in without a prompt,
 pass `--enable-firewall-logging`. Open `http://192.168.1.1:9999` (replace the
@@ -90,7 +71,7 @@ To upgrade, run the same two commands again. To install a specific tarball
 instead of the latest release, pass its path or URL to the installer:
 
 ```sh
-sh /tmp/sniffnetwrt-install.sh https://github.com/REFFIX-X/sniffnetWRT/releases/download/v1.0.0/sniffnetwrt-aarch64.tar.gz
+sh /tmp/sniffnetwrt-install.sh https://github.com/REFFIX-X/sniffnetWRT/releases/download/v1.1.0/sniffnetwrt-aarch64.tar.gz
 ```
 
 Traffic statistics stay in memory. PCAP recording is off by default, so the
@@ -149,8 +130,8 @@ To publish a GitHub Release with that tarball attached, push a version tag after
 the commit has built successfully:
 
 ```sh
-git tag v1.0.0
-git push origin v1.0.0
+git tag vX.Y.Z
+git push origin vX.Y.Z
 ```
 
 The tag workflow builds the same OpenWrt package and publishes
@@ -176,7 +157,7 @@ latest release directly:
 | `--webhook` | `SNIFFNETWRT_WEBHOOK` | — | remote-notification webhook URL |
 | `--notify-threshold` | `SNIFFNETWRT_NOTIFY_THRESHOLD` | — | alert above this many B/s |
 | `--pcap-out` | `SNIFFNETWRT_PCAP_OUT` | — | write captured packets to a PCAP file served at `/pcap` |
-| `--interval-ms` | `SNIFFNETWRT_INTERVAL_MS` | `1000` | snapshot interval |
+| `--interval-ms` | `SNIFFNETWRT_INTERVAL_MS` | `1000` | minimum WebSocket update interval (clamped to 1–60 seconds; capture remains 1 Hz) |
 | `--firewall-logging` | `SNIFFNETWRT_FIREWALL_LOGGING` | `false` | read WAN firewall rejections from `logread` into a 250-event RAM buffer |
 
 Traffic statistics stay in memory by default. PCAP recording is disabled unless

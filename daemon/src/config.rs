@@ -51,7 +51,7 @@ pub struct Config {
     #[arg(long, env = "SNIFFNETWRT_BPF")]
     pub bpf: Option<String>,
 
-    /// Snapshot interval in milliseconds (informational; the engine ticks at 1 Hz).
+    /// Minimum WebSocket snapshot interval in milliseconds (capture remains 1 Hz).
     #[arg(long, env = "SNIFFNETWRT_INTERVAL_MS", default_value_t = 1000)]
     pub interval_ms: u64,
 

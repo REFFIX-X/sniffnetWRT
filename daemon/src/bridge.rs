@@ -41,6 +41,7 @@ pub async fn run(
     last: Arc<RwLock<Option<String>>>,
     security_events: EventBuffer,
     security_logging: bool,
+    interval_ms: u64,
 ) -> Result<(), String> {
     let mut filters = Filters::default();
     if let Some(bpf) = bpf {
@@ -114,6 +115,8 @@ pub async fn run(
     let mut ip_to_host: HashMap<IpAddr, Host> = HashMap::new();
     let mut last_alert: HashMap<String, Instant> = HashMap::new();
     let mut lan_bytes: HashMap<IpAddr, (u64, u64)> = HashMap::new(); // (download, upload)
+    let broadcast_interval = Duration::from_millis(interval_ms.clamp(1000, 60_000));
+    let mut last_broadcast = Instant::now() - broadcast_interval;
 
     loop {
         let msg = match &mut lan_rx {
@@ -156,9 +159,12 @@ pub async fn run(
             fire_alerts(&snap, webhook_url.as_deref(), notify_threshold, &mut last_alert);
 
             if let Ok(json) = serde_json::to_string(&snap) {
-                *last.write().await = Some(json);
+                *last.write().await = Some(json.clone());
+                if last_broadcast.elapsed() >= broadcast_interval {
+                    let _ = tx.send(snap);
+                    last_broadcast = Instant::now();
+                }
             }
-            let _ = tx.send(snap);
         }
     }
 
@@ -284,13 +290,17 @@ fn build_snapshot(
     connections.sort_by(|a, b| b.bytes.cmp(&a.bytes));
     connections.truncate(MAX_CONNECTIONS);
 
+    let mut service_connections = HashMap::<String, usize>::new();
+    for value in info.map.values() {
+        *service_connections.entry(value.service.to_string()).or_default() += 1;
+    }
     let mut services: Vec<ServiceAgg> = info
         .services
         .iter()
         .map(|(service, data)| ServiceAgg {
             name: service.to_string(),
             bytes: data.tot_data(DataRepr::Bytes) as u64,
-            connections: 0,
+            connections: service_connections.get(&service.to_string()).copied().unwrap_or(0),
         })
         .collect();
     services.sort_by(|a, b| b.bytes.cmp(&a.bytes));

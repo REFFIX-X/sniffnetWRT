@@ -729,31 +729,60 @@ function checkNotifications(snap) {
 // ---------------------------------------------------------------------------
 // WebSocket + demo fallback
 // ---------------------------------------------------------------------------
+let demoTimer = null;
+let reconnectTimer = null;
+let reconnectDelay = 1000;
+let liveSeen = false;
+
 function setStatus(live) {
   els.status.classList.toggle('live', live);
   els.status.classList.toggle('offline', !live);
   els.statusText.textContent = live ? 'live' : 'offline';
 }
 function connect() {
+  if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
   const proto = location.protocol === 'https:' ? 'wss' : 'ws';
   const url = `${proto}://${location.host}${WS_PATH}${TOKEN ? '?token=' + encodeURIComponent(TOKEN) : ''}`;
   let ws;
-  try { ws = new WebSocket(url); } catch (e) { startDemo(); return; }
+  try { ws = new WebSocket(url); } catch (e) {
+    if (!liveSeen) startDemo();
+    connectionFailed(true);
+    return;
+  }
   let gotData = false;
-  const failTimer = setTimeout(() => { if (!gotData) { ws.close(); startDemo(); } }, 2500);
+  const failTimer = setTimeout(() => { if (!gotData) ws.close(); }, 5000);
   ws.onopen = () => setStatus(false);
   ws.onmessage = (ev) => {
     gotData = true; clearTimeout(failTimer);
     try {
       const snap = JSON.parse(ev.data);
+      liveSeen = true;
+      reconnectDelay = 1000;
+      if (demoTimer) { clearInterval(demoTimer); demoTimer = null; }
       scheduleSnapshot(snap);
     } catch (e) {}
   };
   ws.onerror = () => {};
-  ws.onclose = () => { clearTimeout(failTimer); if (!gotData) startDemo(); else setStatus(false); };
+  ws.onclose = () => {
+    clearTimeout(failTimer);
+    if (!gotData && !liveSeen) startDemo();
+    else setStatus(false);
+    connectionFailed(true);
+  };
+}
+
+function connectionFailed(scheduleRetry) {
+  if (scheduleRetry && !reconnectTimer) {
+    reconnectTimer = setTimeout(() => {
+      reconnectTimer = null;
+      connect();
+    }, reconnectDelay);
+    reconnectDelay = Math.min(reconnectDelay * 2, 30000);
+  }
 }
 
 function startDemo() {
+  if (liveSeen || demoTimer) return;
   setStatus(false); els.statusText.textContent = 'demo'; els.status.classList.add('live');
   els.iface.textContent = 'wan (demo)';
   const services = ['https', 'http', 'dns', 'ssh', 'quic', 'mdns', 'ntp'];
@@ -767,7 +796,7 @@ function startDemo() {
     { source_ip: '91.240.118.172', source_port: 41002, destination_ip: '203.0.113.42', destination_port: 23, protocol: 'tcp', target: 'router', country: 'RU' },
     { source_ip: '198.98.51.189', source_port: 39872, destination_ip: '203.0.113.42', destination_port: 8080, protocol: 'tcp', target: 'router', country: 'US' },
   ];
-  setInterval(() => {
+  demoTimer = setInterval(() => {
     const inRate = (20 + Math.random() * 90) * 1e6;
     const outRate = (2 + Math.random() * 25) * 1e6;
     inB += inRate; outB += outRate; inP += inRate / 900; outP += outRate / 900;

@@ -53,6 +53,7 @@ pub async fn follow(buffer: EventBuffer, country_db: Arc<MmdbReader>) {
             }
         }
         let _ = child.kill().await;
+        let _ = child.wait().await;
         tokio::time::sleep(std::time::Duration::from_secs(2)).await;
     }
 }

@@ -142,6 +142,10 @@ fi
 if [ "$NEW_CONFIG" -eq 1 ] && command -v uci >/dev/null 2>&1 && [ -f "$CFG" ]; then
 	LAN_IP="$(uci get network.lan.ipaddr 2>/dev/null || true)"
 	[ -n "$LAN_IP" ] && uci set sniffnetwrt.wan.bind="$LAN_IP" && uci commit sniffnetwrt
+	if [ -z "$LAN_IP" ]; then
+		echo "warning: LAN IP could not be detected; the default bind address may listen on all interfaces" >&2
+		echo "         set sniffnetwrt.wan.bind to your router's LAN IP and restart the service" >&2
+	fi
 fi
 
 if [ -x "$INIT" ]; then

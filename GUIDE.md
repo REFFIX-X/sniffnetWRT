@@ -1,126 +1,63 @@
-# sniffnetWRT — Guide
+# sniffnetWRT install and quick guide
 
-A Sniffnet-style, real-time **router traffic dashboard** for OpenWrt. It captures the
-**WAN** interface (and the **LAN** bridge for per-device usage), and serves a live
-dark dashboard over **HTTP/WebSocket on port 9999**.
+sniffnetWRT is a live traffic dashboard for OpenWrt 25.12 on aarch64 routers,
+including the GL.iNet Flint 4. The installer downloads the latest GitHub Release,
+installs the `libpcap` runtime dependency, sets up the procd service, and starts
+the dashboard. No Rust toolchain or package archive handling is needed on the router.
 
----
+## Install or upgrade
 
-## 1. Get the aarch64 binary
-
-You don't need Rust or a Linux machine — GitHub Actions builds it for you.
-
-1. Push to GitHub (the workflow in `.github/workflows/build.yml` runs automatically).
-2. Open **Actions → the finished (green) run → Artifacts → `sniffnetwrt-aarch64`**.
-3. Download it. The archive contains:
-   - `sniffnetwrt` — the binary
-   - `web/` — the dashboard
-   - `sniffnetwrt.init` + `sniffnetwrt.config` — service files
-   - `install.sh` — the installer
-
-## 2. Install on the router
-
-### Option A — one command (recommended)
-
-Extract the installer from the archive, copy it with the archive to the router,
-then run it there:
+SSH to the router as root and run:
 
 ```sh
-tar xzf sniffnetwrt-aarch64.tar.gz install.sh
-scp install.sh sniffnetwrt-aarch64.tar.gz root@192.168.1.1:/tmp/
-ssh root@192.168.1.1 "sh /tmp/install.sh /tmp/sniffnetwrt-aarch64.tar.gz"
+wget -O /tmp/sniffnetwrt-install.sh https://raw.githubusercontent.com/REFFIX-X/sniffnetWRT/main/scripts/install.sh
+sh /tmp/sniffnetwrt-install.sh
 ```
 
-The installer: installs `libpcap`, copies the binary + web + init + config, binds
-the UI to your LAN IP, and starts the service.
+Open `http://192.168.1.1:9999` (replace the IP with the router's LAN address).
+The installer preserves an existing `/etc/config/sniffnetwrt`. For a fresh install
+it sets the bind address to the LAN IP when UCI can read it. Keep the web port
+blocked from untrusted networks; use the OpenWrt firewall and a LAN-only bind.
 
-### Option B — manual
+To install a specific release, pass its tarball URL:
 
 ```sh
-ssh root@192.168.1.1
-apk add libpcap                                     # opkg install libpcap on older OpenWrt
-
-tar xzf sniffnetwrt-aarch64.tar.gz
-mv sniffnetwrt /usr/bin/sniffnetwrt
-mkdir -p /usr/share/sniffnetwrt && cp -r web/* /usr/share/sniffnetwrt/
-cp sniffnetwrt.init /etc/init.d/sniffnetwrt && chmod +x /etc/init.d/sniffnetwrt
-cp sniffnetwrt.config /etc/config/sniffnetwrt
-
-/etc/init.d/sniffnetwrt enable
-/etc/init.d/sniffnetwrt start
+sh /tmp/sniffnetwrt-install.sh https://github.com/REFFIX-X/sniffnetWRT/releases/download/v1.1.0/sniffnetwrt-aarch64.tar.gz
 ```
 
-## 3. Open it
-
-```
-http://192.168.1.1:9999
-```
-
-(use your router's LAN IP — `uci get network.lan.ipaddr`). The WAN interface is
-auto-detected via `ubus`; on the Flint 4 it's `eth2`.
-
-## 4. Configure (`/etc/config/sniffnetwrt`)
-
-| Option | Meaning |
-|---|---|
-| `device` | WAN capture device (empty = auto-detect) |
-| `lan_device` | LAN bridge for per-device usage (default `br-lan`) |
-| `port` | Web UI port (default 9999) |
-| `bind` | Listen address — **set to your LAN IP** (installer does this) |
-| `token` | optional `?token=` auth on the WebSocket and PCAP download |
-| `bpf` | optional BPF filter (e.g. `tcp port 443`) |
-| `mmdb_dir` | dir with `GeoLite2-{Country,ASN}.mmdb` |
-| `webhook` | remote-notification webhook URL |
-| `notify_threshold` | alert above this many B/s |
-| `pcap_out` | path for a live PCAP export (download at `/pcap`) |
-
-Apply with:
+To opt into rate-limited WAN firewall rejection events during install:
 
 ```sh
-uci commit sniffnetwrt && /etc/init.d/sniffnetwrt restart
+sh /tmp/sniffnetwrt-install.sh --enable-firewall-logging
 ```
 
-## 5. Features
+This is optional. It enables WAN-zone logging at 10 messages per minute; recent
+events are kept in RAM and are cleared when the service restarts.
 
-- **Overview** — health (load/RAM/temp/uptime), WAN status, live throughput chart,
-  totals, service breakdown.
-- **Connections** — search + filter by direction or service category, GeoIP country
-  flags, and expandable per-connection detail.
-- **Devices** — LAN clients with live per-device **down/up** (from the `br-lan` capture).
-- **Settings** — themes (Footstrap default), browser alerts + rate threshold.
-
-Backend extras: remote webhook notifications for rate thresholds, live PCAP export,
-reverse-DNS + GeoLite2
-country/ASN, and Sniffnet's 6000+ service signatures.
-
-## 6. Geo / ASN (optional)
-
-Drop `GeoLite2-{Country,ASN}.mmdb` into `mmdb_dir` (a free [MaxMind](https://www.maxmind.com/en/geolite2/signup) account):
+## Configure and operate
 
 ```sh
-MAXMIND_LICENSE_KEY=xxxx ./scripts/fetch-geo.sh db
-scp db/*.mmdb root@192.168.1.1:/usr/share/sniffnetwrt/
+uci show sniffnetwrt
+uci set sniffnetwrt.wan.interval_ms='5000'  # WebSocket updates at most every 5 seconds
+uci commit sniffnetwrt
+/etc/init.d/sniffnetwrt restart
 ```
 
-Without them the dashboard still works — you just won't see country flags / ASN names.
+The capture engine continues sampling once per second. The `interval_ms` option
+controls the minimum interval at which snapshots are sent to connected browsers.
+The dashboard also has a browser-local refresh setting. Traffic totals and
+firewall event history are held in memory by default. PCAP writing is disabled
+unless `pcap_out` is explicitly configured; avoid setting it to router flash for
+continuous capture.
 
-## 7. Troubleshooting
+Useful checks:
 
 ```sh
-# is it running?
 /etc/init.d/sniffnetwrt status
-logread | grep sniffnetwrt          # logs
-
-# test the endpoints
-curl -s http://192.168.1.1:9999/healthz     # -> ok
-curl -s 'http://192.168.1.1:9999/pcap?token=YOUR_TOKEN' -o x.pcap   # include token if configured
-
-# run in the foreground to see errors
-/etc/init.d/sniffnetwrt stop
-/usr/bin/sniffnetwrt --web-dir /usr/share/sniffnetwrt --port 9999
+logread | grep sniffnetwrt
+curl -s http://127.0.0.1:9999/healthz
+ubus call network.interface.wan status
 ```
 
-**Common issues**
-- **No traffic / blank dashboard** → check the WAN device: `ubus call network.interface.wan status` and set `option device`.
-- **Can't reach :9999** → `bind` is set to the LAN IP and you're on the LAN; or a firewall rule blocks it.
-- **No per-device bytes** → `lan_device` must be a real bridge (`br-lan`); check `ip link show br-lan`.
+For interface overrides, authentication token configuration, GeoIP databases,
+firewall event details, and development builds, see the [README](README.md).

@@ -67,6 +67,7 @@ async fn main() -> anyhow::Result<()> {
         let bridge_last = last.clone();
         let bridge_security_events = security_events.clone();
         let security_logging = config.firewall_logging;
+        let interval_ms = config.interval_ms;
         tokio::spawn(async move {
             if let Err(e) = bridge::run(
                 device,
@@ -80,6 +81,7 @@ async fn main() -> anyhow::Result<()> {
                 bridge_last,
                 bridge_security_events,
                 security_logging,
+                interval_ms,
             )
             .await
             {
