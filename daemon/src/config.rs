@@ -54,4 +54,8 @@ pub struct Config {
     /// Snapshot interval in milliseconds (informational; the engine ticks at 1 Hz).
     #[arg(long, env = "SNIFFNETWRT_INTERVAL_MS", default_value_t = 1000)]
     pub interval_ms: u64,
+
+    /// Read WAN firewall rejection events from logd (RAM-only, requires fw4 zone logging).
+    #[arg(long, env = "SNIFFNETWRT_FIREWALL_LOGGING", default_value_t = false)]
+    pub firewall_logging: bool,
 }

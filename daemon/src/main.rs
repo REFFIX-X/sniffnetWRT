@@ -4,6 +4,7 @@ mod bridge;
 mod config;
 mod model;
 mod server;
+mod security;
 mod sysinfo;
 mod wan;
 mod webhook;
@@ -44,6 +45,16 @@ async fn main() -> anyhow::Result<()> {
     // Shared channel between the capture bridge and WebSocket sessions.
     let (tx, _rx) = broadcast::channel::<model::Snapshot>(256);
     let last = Arc::new(RwLock::new(None));
+    let security_events = security::new_buffer();
+    if config.firewall_logging {
+        let events = security_events.clone();
+        let country_path = format!("{}/GeoLite2-Country.mmdb", config.mmdb_dir);
+        let country_db = Arc::new(
+            sniffnetwrt_engine::mmdb::types::mmdb_reader::MmdbReader::from(&country_path, &[]),
+        );
+        tokio::spawn(async move { security::follow(events, country_db).await });
+        tracing::info!("WAN firewall rejection event capture enabled (RAM only)");
+    }
 
     // Run the engine + bridge on a tokio task.
     {
@@ -54,6 +65,8 @@ async fn main() -> anyhow::Result<()> {
         let notify_threshold = config.notify_threshold;
         let pcap_out = config.pcap_out.clone();
         let bridge_last = last.clone();
+        let bridge_security_events = security_events.clone();
+        let security_logging = config.firewall_logging;
         tokio::spawn(async move {
             if let Err(e) = bridge::run(
                 device,
@@ -65,6 +78,8 @@ async fn main() -> anyhow::Result<()> {
                 pcap_out,
                 tx,
                 bridge_last,
+                bridge_security_events,
+                security_logging,
             )
             .await
             {
@@ -78,6 +93,7 @@ async fn main() -> anyhow::Result<()> {
         last,
         token: config.token.clone(),
         pcap_path: config.pcap_out.clone(),
+        security_events,
     };
 
     axum::serve(listener, server::build(state, &config.web_dir)).await?;

@@ -22,6 +22,23 @@ pub struct Snapshot {
     pub wan: Option<WanStatus>,
     /// LAN clients discovered via ARP + DHCP leases.
     pub devices: Vec<Device>,
+    /// Recent firewall-rejected packets, retained only in process memory.
+    pub security_events: Vec<SecurityEvent>,
+    /// Whether sniffnetWRT was configured to read WAN firewall rejection logs.
+    pub security_logging: bool,
+}
+
+#[derive(Clone, Serialize)]
+pub struct SecurityEvent {
+    pub timestamp: u64,
+    pub source_ip: String,
+    pub source_port: Option<u16>,
+    pub destination_ip: String,
+    pub destination_port: Option<u16>,
+    pub protocol: String,
+    /// `router` for WAN input traffic or `forwarded` for traffic routed onward.
+    pub target: String,
+    pub country: Option<String>,
 }
 
 /// Cumulative counters plus the instantaneous rate (bytes/second).

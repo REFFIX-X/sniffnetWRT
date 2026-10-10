@@ -5,6 +5,7 @@
 #   ./install.sh                                      # install latest release
 #   ./install.sh ./sniffnetwrt-aarch64.tar.gz         # install a local package
 #   ./install.sh https://example/sniffnetwrt.tar.gz   # install a package URL
+#   ./install.sh --enable-firewall-logging            # opt in to rate-limited rejects
 #
 # The tarball must contain: sniffnetwrt (binary), web/, sniffnetwrt.init,
 # sniffnetwrt.config, and install.sh — exactly what the GitHub Actions build produces.
@@ -12,7 +13,19 @@
 set -eu
 
 RELEASE_URL="https://github.com/REFFIX-X/sniffnetWRT/releases/latest/download/sniffnetwrt-aarch64.tar.gz"
-SRC="${1:-$RELEASE_URL}"
+SRC="$RELEASE_URL"
+FIREWALL_LOGGING="ask"
+for arg in "$@"; do
+	case "$arg" in
+		--enable-firewall-logging) FIREWALL_LOGGING=1 ;;
+		--help|-h)
+			echo "Usage: $0 [tarball-or-url] [--enable-firewall-logging]"
+			exit 0
+			;;
+		-*) echo "error: unknown option: $arg" >&2; exit 2 ;;
+		*) SRC="$arg" ;;
+	esac
+done
 WEB_DIR=/usr/share/sniffnetwrt
 BIN=/usr/bin/sniffnetwrt
 INIT=/etc/init.d/sniffnetwrt
@@ -86,6 +99,45 @@ if [ -f "$BASE/sniffnetwrt.config" ] && [ ! -f "$CFG" ]; then
 	NEW_CONFIG=1
 fi
 
+# Firewall logging is opt-in. The default prompt is no, and non-interactive
+# installs never modify firewall settings. fw4 zone logging records REJECTs,
+# rate-limited here to protect router CPU and the RAM log buffer.
+if [ "$FIREWALL_LOGGING" = "ask" ] && [ -r /dev/tty ] && [ -w /dev/tty ]; then
+	printf "Enable rate-limited WAN firewall rejection logging? [y/N] " >/dev/tty
+	if IFS= read -r answer </dev/tty && case "$answer" in y|Y|yes|YES|Yes) true ;; *) false ;; esac; then
+		FIREWALL_LOGGING=1
+	else
+		FIREWALL_LOGGING=0
+	fi
+fi
+
+if [ "$FIREWALL_LOGGING" = "1" ]; then
+	if ! command -v uci >/dev/null 2>&1; then
+		echo "warning: uci unavailable; firewall logging was not enabled" >&2
+		FIREWALL_LOGGING=0
+	else
+		WAN_ZONE=""
+		for section in $(uci -q show firewall | sed -n 's/^firewall\.\([^=]*\)=zone$/\1/p'); do
+			if [ "$(uci -q get "firewall.$section.name" 2>/dev/null || true)" = "wan" ]; then
+				WAN_ZONE="$section"
+				break
+			fi
+		done
+		if [ -z "$WAN_ZONE" ]; then
+			echo "warning: no firewall zone named wan found; logging was not enabled" >&2
+			FIREWALL_LOGGING=0
+		else
+			uci set "firewall.$WAN_ZONE.log=1"
+			uci set "firewall.$WAN_ZONE.log_limit=10/minute"
+			uci commit firewall
+			uci set sniffnetwrt.wan.firewall_logging=1
+			uci commit sniffnetwrt
+			/etc/init.d/firewall reload
+			echo "WAN rejection logging enabled (limit: 10 messages/minute)."
+		fi
+	fi
+fi
+
 # Bind to the LAN IP by default so the dashboard isn't reachable from the WAN.
 if [ "$NEW_CONFIG" -eq 1 ] && command -v uci >/dev/null 2>&1 && [ -f "$CFG" ]; then
 	LAN_IP="$(uci get network.lan.ipaddr 2>/dev/null || true)"
@@ -107,3 +159,6 @@ echo "  Dashboard:  http://<router-lan-ip>:9999"
 echo "  Configure:  uci show sniffnetwrt   (token, webhook, pcap, ...)"
 echo "  Restart:    /etc/init.d/sniffnetwrt restart"
 echo "  Logs:       logread | grep sniffnetwrt"
+if [ "$FIREWALL_LOGGING" != "1" ]; then
+	echo "  Firewall rejects: disabled (rerun with --enable-firewall-logging to opt in)"
+fi

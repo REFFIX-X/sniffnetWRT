@@ -25,6 +25,7 @@ sniffnetWRT/
 │       ├── webhook.rs      # remote webhook notifications
 │       ├── model.rs        # JSON snapshot schema (mirrors Sniffnet's InfoTraffic)
 │       ├── server.rs       # axum router (static assets + /ws + /healthz)
+│       ├── security.rs     # optional fw4 rejection stream (bounded RAM history)
 │       └── ws.rs           # WebSocket session relay
 ├── web/                    # frontend (vanilla HTML/CSS/JS, no build step)
 │   ├── index.html
@@ -79,7 +80,10 @@ sh /tmp/sniffnetwrt-install.sh
 The installer downloads the latest release, installs `libpcap`, puts the app
 files in place, and enables and starts the service. It preserves an existing
 `/etc/config/sniffnetwrt`; on a fresh install, it binds the dashboard to the
-router's LAN IP when available. Open `http://192.168.1.1:9999` (replace the
+router's LAN IP when available. On an interactive install it asks whether to
+enable rate-limited WAN firewall rejection logging; the default is **No**.
+Unattended installs never change firewall settings. To opt in without a prompt,
+pass `--enable-firewall-logging`. Open `http://192.168.1.1:9999` (replace the
 address with your router's LAN IP if it differs).
 
 To upgrade, run the same two commands again. To install a specific tarball
@@ -91,6 +95,34 @@ sh /tmp/sniffnetwrt-install.sh https://github.com/REFFIX-X/sniffnetWRT/releases/
 
 Traffic statistics stay in memory. PCAP recording is off by default, so the
 installer does not set up continuous writes of traffic captures to router flash.
+
+### Inbound firewall events
+
+The **Security** tab can show packets that the WAN firewall explicitly logged
+as `REJECT`. This requires both OpenWrt WAN-zone logging and the sniffnetWRT
+event reader. On a fresh interactive install, answer **Yes** to the optional
+prompt, or install with `--enable-firewall-logging`. The installer enables WAN
+zone logging at **10 messages per minute** and sets the app's reader option.
+Events are read from OpenWrt `logread` and only the newest 250 are kept in
+sniffnetWRT process memory. Clearing the list or restarting the service clears
+that history; sniffnetWRT does not save event history to flash.
+
+For a manual opt-in, in LuCI open **Network → Firewall → Zones → WAN**, enable
+logging, and set a conservative log limit such as `10/minute`. Then enable the
+reader and restart the service:
+
+```sh
+uci set sniffnetwrt.wan.firewall_logging='1'
+uci commit sniffnetwrt
+/etc/init.d/sniffnetwrt restart
+```
+
+This is a rejection view, not a complete record of every dropped packet.
+OpenWrt's zone logging reports rejected packets; rules that silently `DROP`
+traffic do not create events. Enabling logging can use extra CPU and RAM under
+scans or attack traffic, which is why it is opt-in and rate-limited. OpenWrt's
+default system log is a RAM ring buffer; avoid configuring persistent log files
+if your goal is to minimize flash writes.
 
 If the dashboard does not load, check the service log with
 `logread | grep sniffnetwrt` and confirm your LAN address with
@@ -145,6 +177,7 @@ latest release directly:
 | `--notify-threshold` | `SNIFFNETWRT_NOTIFY_THRESHOLD` | — | alert above this many B/s |
 | `--pcap-out` | `SNIFFNETWRT_PCAP_OUT` | — | write captured packets to a PCAP file served at `/pcap` |
 | `--interval-ms` | `SNIFFNETWRT_INTERVAL_MS` | `1000` | snapshot interval |
+| `--firewall-logging` | `SNIFFNETWRT_FIREWALL_LOGGING` | `false` | read WAN firewall rejections from `logread` into a 250-event RAM buffer |
 
 Traffic statistics stay in memory by default. PCAP recording is disabled unless
 `--pcap-out` (or the UCI `pcap_out` option) is explicitly set; avoid pointing it
@@ -164,8 +197,10 @@ into a full router traffic monitor:
 - **reverse-DNS** domains + **GeoLite2 country/ASN** enrichment (`--mmdb-dir db`),
 - **remote webhook notifications** on rate thresholds (`--webhook`),
 - router **health** (load/RAM/temp/uptime), **WAN status**, and **LAN clients**,
-- dashboard tabs (Overview / Connections / Devices / Settings) with **search,
-  filters, themes, service categories, GeoIP flags, and per-connection detail**.
+- dashboard tabs (Overview / Connections / Security / Devices / Settings) with **search,
+  filters, themes, service categories, GeoIP flags, per-connection detail, and CSV export**,
+- optional **RAM-only firewall rejection history**, browser filters, GeoIP flags, and exports,
+- per-device live rate estimates and optional browser alerts for new clients or traffic spikes.
 
 Still desktop-only (not ported): `iced` GUI, IPFIX, program/process
 identification, sound, and thumbnail mode. A flow diagram remains a possible

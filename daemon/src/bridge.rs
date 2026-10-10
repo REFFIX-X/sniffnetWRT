@@ -21,7 +21,8 @@ use sniffnetwrt_engine::networking::types::info_traffic::InfoTraffic;
 use sniffnetwrt_engine::networking::types::traffic_direction::TrafficDirection;
 use tokio::sync::{broadcast, RwLock};
 
-use crate::model::{Connection, ServiceAgg, Snapshot, Totals};
+use crate::model::{Connection, SecurityEvent, ServiceAgg, Snapshot, Totals};
+use crate::security::EventBuffer;
 use crate::{sysinfo, webhook};
 
 const MAX_CONNECTIONS: usize = 500;
@@ -38,6 +39,8 @@ pub async fn run(
     pcap_out: Option<String>,
     tx: broadcast::Sender<Snapshot>,
     last: Arc<RwLock<Option<String>>>,
+    security_events: EventBuffer,
+    security_logging: bool,
 ) -> Result<(), String> {
     let mut filters = Filters::default();
     if let Some(bpf) = bpf {
@@ -146,6 +149,8 @@ pub async fn run(
                 incoming_rate,
                 outgoing_rate,
                 &lan_bytes,
+                security_events.read().await.iter().cloned().collect(),
+                security_logging,
             );
 
             fire_alerts(&snap, webhook_url.as_deref(), notify_threshold, &mut last_alert);
@@ -224,6 +229,8 @@ fn build_snapshot(
     incoming_rate: f64,
     outgoing_rate: f64,
     lan_bytes: &HashMap<IpAddr, (u64, u64)>,
+    security_events: Vec<SecurityEvent>,
+    security_logging: bool,
 ) -> Snapshot {
     let tot = &info.tot_data_info;
     let totals = Totals {
@@ -315,5 +322,7 @@ fn build_snapshot(
         health: Some(sysinfo::health()),
         wan: sysinfo::wan_status(device),
         devices,
+        security_events,
+        security_logging,
     }
 }

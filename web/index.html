@@ -16,6 +16,7 @@
       <nav class="tabs" id="tabs">
         <button class="tab active" data-tab="overview">Overview</button>
         <button class="tab" data-tab="connections">Connections</button>
+        <button class="tab" data-tab="security">Security <span class="tab-count" id="securityNavCount">0</span></button>
         <button class="tab" data-tab="devices">Devices</button>
         <button class="tab" data-tab="settings">Settings</button>
       </nav>
@@ -102,6 +103,7 @@
             <option value="incoming">Incoming</option>
             <option value="outgoing">Outgoing</option>
           </select>
+          <button class="btn" id="exportConnections" type="button">Export CSV</button>
         </div>
         <article class="panel table-panel">
           <header class="panel-head"><span>Connections</span><span class="sub" id="connSub">0 shown</span></header>
@@ -126,6 +128,39 @@
         </article>
       </section>
 
+      <!-- ══════════ SECURITY ══════════ -->
+      <section class="tab-panel hidden security-panel" id="tab-security">
+        <section class="security-hero">
+          <div class="security-copy">
+            <div class="eyebrow"><span class="pulse-mark"></span> PERIMETER WATCH</div>
+            <h1>Inbound security</h1>
+            <p>Firewall rejection events from the WAN, held in router memory.</p>
+          </div>
+          <div class="security-state" id="securityState"><span class="state-orb"></span><span id="securityStateText">Waiting for data</span></div>
+        </section>
+        <div class="security-notice" id="securityNotice" role="status"></div>
+        <section class="security-metrics">
+          <article class="security-metric"><span>REJECTS IN BUFFER</span><strong id="secTotal">0</strong><small>Most recent events</small></article>
+          <article class="security-metric"><span>SOURCE ADDRESSES</span><strong id="secSources">0</strong><small>Unique remote IPs</small></article>
+          <article class="security-metric"><span>TOP SOURCE</span><strong class="metric-mono" id="secTopSource">—</strong><small id="secTopSourceSub">No events yet</small></article>
+          <article class="security-metric"><span>TOP TARGET PORT</span><strong id="secTopPort">—</strong><small id="secTopPortSub">No events yet</small></article>
+        </section>
+        <article class="panel security-events-panel">
+          <header class="panel-head"><span><i class="security-icon">⌁</i> Rejected traffic</span><span class="sub" id="securityCount">0 events</span></header>
+          <div class="toolbar security-toolbar">
+            <input type="search" id="securitySearch" placeholder="Filter source, destination, port…" autocomplete="off" />
+            <select id="securityTarget"><option value="">Router + forwarded</option><option value="router">Router access</option><option value="forwarded">Forwarded to LAN</option></select>
+            <button class="btn" id="exportSecurity" type="button">Export CSV</button>
+            <button class="btn" id="clearSecurity" type="button">Clear RAM history</button>
+          </div>
+          <div class="table-wrap">
+            <table class="security-table"><thead><tr><th>Time</th><th>Source</th><th>Geo</th><th>Target</th><th>Destination</th><th>Proto</th><th>Verdict</th></tr></thead>
+              <tbody id="securityBody"><tr><td colspan="7" class="empty">No firewall rejection events in memory.</td></tr></tbody></table>
+          </div>
+        </article>
+        <p class="security-footnote">Only packets logged by OpenWrt's WAN firewall zone appear here. Zone logging reports rejected packets; packets silently dropped by firewall rules are not included. History is limited to the latest 250 events and is cleared when sniffnetWRT restarts.</p>
+      </section>
+
       <!-- ══════════ DEVICES ══════════ -->
       <section class="tab-panel hidden" id="tab-devices">
         <article class="panel table-panel">
@@ -133,7 +168,7 @@
           <div class="table-wrap">
             <table>
               <thead>
-                <tr><th>Hostname</th><th>MAC</th><th>IPv4</th><th class="num">↓ Down</th><th class="num">↑ Up</th><th>Status</th></tr>
+                <tr><th>Hostname</th><th>MAC</th><th>IPv4</th><th class="num">↓ Download</th><th class="num">↑ Upload</th><th>Status</th></tr>
               </thead>
               <tbody id="devBody"><tr><td colspan="6" class="empty">no devices discovered</td></tr></tbody>
             </table>
@@ -174,7 +209,20 @@
           <div class="setting-row">
             <label class="chip"><input type="checkbox" id="notifyEnabled" /> Browser alerts (needs permission)</label>
             <label class="setting-label">Rate threshold (Mbps): <input type="number" id="notifyThreshold" min="0" step="1" value="0" /></label>
-            <span class="hint">Alerts when total throughput exceeds the threshold. 0 = disabled.</span>
+            <label class="chip"><input type="checkbox" id="alertNewDevice" /> Alert when a new LAN device appears</label>
+            <label class="chip"><input type="checkbox" id="alertRateSpike" /> Alert on a sudden traffic spike (&gt; 50 Mbps and 3× baseline)</label>
+            <span class="hint">All browser alerts are optional and remain local to this browser. Rate threshold 0 disables that alert.</span>
+          </div>
+        </article>
+
+        <article class="panel">
+          <header class="panel-head"><span>Privacy and event history</span></header>
+          <div class="setting-row">
+            <label class="setting-label" for="securityRetention">Show firewall events from:
+              <select id="securityRetention"><option value="900">Last 15 minutes</option><option value="3600">Last hour</option><option value="21600">Last 6 hours</option><option value="86400">Last 24 hours</option></select>
+            </label>
+            <label class="chip"><input type="checkbox" id="hideDomains" /> Hide domain names in this browser</label>
+            <span class="hint">Event history is RAM-only and capped at 250 records. The time filter controls display; restart sniffnetWRT to clear the buffer. Hiding domains changes this browser's view; it does not disable domain enrichment on the router.</span>
           </div>
         </article>
 
