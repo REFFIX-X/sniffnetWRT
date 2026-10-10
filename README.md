@@ -58,7 +58,43 @@ Open http://127.0.0.1:9999 — you'll see the live dashboard. Without the daemon
 mode** so you can preview the look.
 
 > The `pcap` crate links the system libpcap. On Debian/Ubuntu:
-> `sudo apt install libpcap-dev`. On OpenWrt: `apk add libpcap`.
+> `sudo apt install libpcap-dev`. On OpenWrt 25.12: `apk -U add libpcap`.
+
+## Install on a Flint 4 (OpenWrt 25.12)
+
+The ready-to-install release targets the GL.iNet Flint 4 (MT7988, aarch64)
+running OpenWrt 25.12.x. From a computer with SSH access, connect as `root`:
+
+```sh
+ssh root@192.168.1.1
+```
+
+Then run these commands in the router's shell:
+
+```sh
+wget -O /tmp/sniffnetwrt-install.sh https://raw.githubusercontent.com/REFFIX-X/sniffnetWRT/main/scripts/install.sh
+sh /tmp/sniffnetwrt-install.sh
+```
+
+The installer downloads the latest release, installs `libpcap`, puts the app
+files in place, and enables and starts the service. It preserves an existing
+`/etc/config/sniffnetwrt`; on a fresh install, it binds the dashboard to the
+router's LAN IP when available. Open `http://192.168.1.1:9999` (replace the
+address with your router's LAN IP if it differs).
+
+To upgrade, run the same two commands again. To install a specific tarball
+instead of the latest release, pass its path or URL to the installer:
+
+```sh
+sh /tmp/sniffnetwrt-install.sh https://github.com/REFFIX-X/sniffnetWRT/releases/download/v1.0.0/sniffnetwrt-aarch64.tar.gz
+```
+
+Traffic statistics stay in memory. PCAP recording is off by default, so the
+installer does not set up continuous writes of traffic captures to router flash.
+
+If the dashboard does not load, check the service log with
+`logread | grep sniffnetwrt` and confirm your LAN address with
+`uci get network.lan.ipaddr`.
 
 ## Build with zero local toolchain (GitHub Actions)
 
@@ -92,40 +128,6 @@ latest release directly:
 
 > First run may need a tiny tweak (e.g. the `SDK_URL` in `build.yml`). The
 > workflow log shows the exact failure; the fix is usually editing that one URL.
-
-## Deploy to the Flint 4 (OpenWrt 25.12)
-
-The Flint 4 is MediaTek Filogic 880 (MT7988), `mediatek/filogic`, `aarch64`.
-
-```sh
-# 1. Cross-compile (needs rustup + the OpenWrt 25.12 SDK for mediatek/filogic)
-SDK_DIR=/path/to/openwrt-sdk-25.12.0-mediatek-filogic_* ./openwrt/cross-build.sh
-
-# 2. Copy the binary + web assets to the router
-scp daemon/target/aarch64-unknown-linux-musl/release/sniffnetwrt root@192.168.1.1:/tmp/
-scp -r web root@192.168.1.1:/tmp/web
-
-# 3. On the router
-ssh root@192.168.1.1
-apk add libpcap
-mv /tmp/sniffnetwrt /usr/bin/sniffnetwrt
-mkdir -p /usr/share/sniffnetwrt && cp -r /tmp/web/* /usr/share/sniffnetwrt/
-
-# 4. Run (WAN auto-detected; override with --interface <dev>)
-/usr/bin/sniffnetwrt --web-dir /usr/share/sniffnetwrt --port 9999 --bind 192.168.1.1
-```
-
-For a proper service, install the init script + UCI config:
-
-```sh
-cp openwrt/sniffnetwrt.init /etc/init.d/sniffnetwrt
-cp openwrt/sniffnetwrt.config /etc/config/sniffnetwrt
-chmod +x /etc/init.d/sniffnetwrt
-/etc/init.d/sniffnetwrt enable
-/etc/init.d/sniffnetwrt start
-```
-
-Then browse to `http://192.168.1.1:9999`.
 
 ## Configuration
 
@@ -165,9 +167,9 @@ into a full router traffic monitor:
 - dashboard tabs (Overview / Connections / Devices / Settings) with **search,
   filters, themes, service categories, GeoIP flags, and per-connection detail**.
 
-Still desktop-only (dropped): `iced` GUI, IPFIX, program/process identification,
-sound, thumbnail mode. Future: per-device *bandwidth* (br-lan capture / nlbwmon),
-PCAP export endpoint, flow diagram. See [`PORTING.md`](PORTING.md).
+Still desktop-only (not ported): `iced` GUI, IPFIX, program/process
+identification, sound, and thumbnail mode. A flow diagram remains a possible
+future feature. See [`PORTING.md`](PORTING.md).
 
 ## License
 
